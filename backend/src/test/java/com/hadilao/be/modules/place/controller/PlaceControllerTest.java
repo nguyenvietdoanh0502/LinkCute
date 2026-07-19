@@ -34,6 +34,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -74,8 +75,10 @@ class PlaceControllerTest {
         })
         @DisplayName("Should deny every HTTP import endpoint")
         void shouldDenyEveryImportEndpoint(String path) throws Exception {
-            mockMvc.perform(post(path))
-                    .andExpect(status().isForbidden());
+            mockMvc.perform(post(path).with(user("test@example.com")))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.status").value("error"))
+                    .andExpect(jsonPath("$.errorCode").value("UNAUTHORIZED"));
         }
     }
 
@@ -107,7 +110,8 @@ class PlaceControllerTest {
                     .andExpect(jsonPath("$.status").value("success"))
                     .andExpect(jsonPath("$.data.content[0].name").value("Pho Bo"))
                     .andExpect(jsonPath("$.data.content[0].category").value("FOOD"))
-                    .andExpect(jsonPath("$.data.totalElements").value(1));
+                    .andExpect(jsonPath("$.data.totalElements").value(1))
+                    .andExpect(jsonPath("$.data.pageable").doesNotExist());
         }
 
         @Test
@@ -140,6 +144,17 @@ class PlaceControllerTest {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.data.content").isEmpty())
                     .andExpect(jsonPath("$.data.totalElements").value(0));
+        }
+
+        @Test
+        @DisplayName("Should return 400 for an unknown category")
+        void testGetPlaces_InvalidCategory() throws Exception {
+            mockMvc.perform(get("/api/v1/places")
+                            .param("category", "NOPE")
+                            .contentType(MediaType.APPLICATION_JSON))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.status").value("error"))
+                    .andExpect(jsonPath("$.errorCode").value("INVALID_INPUT"));
         }
     }
 
@@ -195,6 +210,16 @@ class PlaceControllerTest {
                     .andExpect(jsonPath("$.status").value("error"))
                     .andExpect(jsonPath("$.errorCode").value("RESOURCE_NOT_FOUND"));
         }
+
+        @Test
+        @DisplayName("Should return 400 when place id is not a UUID")
+        void testGetPlaceById_InvalidUuid() throws Exception {
+            mockMvc.perform(get("/api/v1/places/not-a-uuid")
+                            .contentType(MediaType.APPLICATION_JSON))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.status").value("error"))
+                    .andExpect(jsonPath("$.errorCode").value("INVALID_INPUT"));
+        }
     }
 
     @Nested
@@ -230,6 +255,18 @@ class PlaceControllerTest {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.data").isArray())
                     .andExpect(jsonPath("$.data").isEmpty());
+        }
+
+        @Test
+        @DisplayName("Should ignore a malformed bearer token on a public endpoint")
+        void testGetCategories_MalformedBearerToken() throws Exception {
+            when(placeService.getCategories()).thenReturn(List.of());
+
+            mockMvc.perform(get("/api/v1/categories")
+                            .header("Authorization", "Bearer not-a-jwt")
+                            .contentType(MediaType.APPLICATION_JSON))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value("success"));
         }
     }
 

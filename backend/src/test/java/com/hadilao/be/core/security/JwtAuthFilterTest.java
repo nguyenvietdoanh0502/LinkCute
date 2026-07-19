@@ -1,5 +1,6 @@
 package com.hadilao.be.core.security;
 
+import io.jsonwebtoken.MalformedJwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -115,6 +116,18 @@ class JwtAuthFilterTest {
 
         assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
         verify(jwtProvider, never()).isTokenValid("access-token", userDetails);
+        verify(filterChain).doFilter(request, response);
+    }
+
+    @Test
+    void ignoresMalformedTokenAndContinuesAsAnonymous() throws Exception {
+        when(request.getHeader("Authorization")).thenReturn("Bearer not-a-jwt");
+        when(jwtProvider.isAccessToken("not-a-jwt"))
+                .thenThrow(new MalformedJwtException("Malformed token"));
+
+        jwtAuthFilter.doFilterInternal(request, response, filterChain);
+
+        assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
         verify(filterChain).doFilter(request, response);
     }
 }

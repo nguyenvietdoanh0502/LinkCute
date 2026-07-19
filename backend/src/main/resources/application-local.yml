@@ -9,13 +9,13 @@ spring:
     driver-class-name: org.postgresql.Driver
 
   jpa:
+    open-in-view: false
     hibernate:
-      ddl-auto: update # Allow automatic updates in local development
+      ddl-auto: validate
     show-sql: ${JPA_SHOW_SQL:false}
     properties:
       hibernate:
         format_sql: true
-        dialect: org.hibernate.dialect.PostgreSQLDialect
         jdbc:
           batch_size: 500
         order_inserts: true
@@ -25,12 +25,14 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6380}
+      repositories:
+        enabled: false
 
   mail:
-    host: ${MAIL_HOST:smtp.gmail.com}
-    port: ${MAIL_PORT:587}
-    username: ${MAIL_USERNAME:lminhhieu2507@gmail.com}
-    password: ${MAIL_PASSWORD:bgcpomzycvqgzdtm}
+    host: ${MAIL_HOST}
+    port: ${MAIL_PORT}
+    username: ${MAIL_USERNAME}
+    password: ${MAIL_PASSWORD}
     properties:
       mail:
         smtp:
@@ -50,7 +52,7 @@ roamly:
     osm-path: ${OSM_DATA_PATH:data/osm-hanoi.json}
     min-overture-confidence: ${MIN_OVERTURE_CONFIDENCE:0.60}
   jwt:
-    secret: ${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970} # Default secret for local dev
+    secret: ${JWT_SECRET}
     access-token-expiration: 86400000 # 24h
     refresh-token-expiration: 2592000000
     reset-password-expiration: ${RESET_PASSWORD_TOKEN_EXPIRATION:300000} # 5 minutes

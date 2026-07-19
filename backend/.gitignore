@@ -35,6 +35,7 @@ build/
 
 ### Env ###
 .env
+.env.production
 /src/main/resources/application-*.properties
 !/src/main/resources/application-local.properties
 !/src/main/resources/application-dev-example.properties

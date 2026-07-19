@@ -209,6 +209,50 @@ public class AuthControllerTest {
                     .andExpect(jsonPath("$.status").value("error"))
                     .andExpect(jsonPath("$.errorCode").value("INVALID_RESET_TOKEN"));
         }
+
+        @Test
+        @DisplayName("Should return a domain error when refresh token is missing")
+        void testRefreshToken_MissingToken() throws Exception {
+            mockMvc.perform(post("/api/v1/auth/refresh-token")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{}"))
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.status").value("error"))
+                    .andExpect(jsonPath("$.errorCode").value("INVALID_REFRESH_TOKEN"));
+        }
+
+        @Test
+        @DisplayName("Should return 400 when JSON is malformed")
+        void testLogin_MalformedJson() throws Exception {
+            mockMvc.perform(post("/api/v1/auth/login")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{bad"))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.status").value("error"))
+                    .andExpect(jsonPath("$.errorCode").value("INVALID_INPUT"));
+        }
+
+        @Test
+        @DisplayName("Should require a six-digit OTP")
+        void testVerifyOtp_RejectsLetters() throws Exception {
+            mockMvc.perform(post("/api/v1/auth/verify-otp")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"email\":\"test@example.com\",\"otpCode\":\"abcdef\"}"))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.status").value("error"))
+                    .andExpect(jsonPath("$.errorCode").value("INVALID_OTP_FORMAT"));
+        }
+
+        @Test
+        @DisplayName("Should return a structured 401 for protected endpoints")
+        void testChangePassword_Anonymous() throws Exception {
+            mockMvc.perform(post("/api/v1/auth/change-password")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{}"))
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.status").value("error"))
+                    .andExpect(jsonPath("$.errorCode").value("UNAUTHENTICATED"));
+        }
     }
 }
 

@@ -3,21 +3,37 @@ package com.hadilao.be.core.exception;
 import com.hadilao.be.core.common.ApiResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.dao.DataIntegrityViolationException;
-
-import java.nio.file.AccessDeniedException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 @ControllerAdvice
 @Slf4j
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(value = Exception.class)
-    ResponseEntity<ApiResponse<Void>> handlingRuntimeException(RuntimeException exception) {
+    ResponseEntity<ApiResponse<Void>> handlingException(Exception exception) {
         log.error("Exception: ", exception);
         ErrorCode errorCode = ErrorCode.UNCATEGORIZED_EXCEPTION;
+        ApiResponse<Void> apiResponse = ApiResponse.error(
+                errorCode.getHttpStatus(),
+                errorCode.getMessage(),
+                errorCode.getCode());
+
+        return ResponseEntity.status(errorCode.getHttpStatus()).body(apiResponse);
+    }
+
+    @ExceptionHandler(value = {
+            MethodArgumentTypeMismatchException.class,
+            HttpMessageNotReadableException.class
+    })
+    ResponseEntity<ApiResponse<Void>> handlingInvalidInput(Exception exception) {
+        log.debug("Invalid request input: {}", exception.getMessage());
+        ErrorCode errorCode = ErrorCode.INVALID_INPUT;
         ApiResponse<Void> apiResponse = ApiResponse.error(
                 errorCode.getHttpStatus(),
                 errorCode.getMessage(),

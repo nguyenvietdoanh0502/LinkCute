@@ -95,4 +95,11 @@ class JwtProviderTest {
                 .isInstanceOf(AppException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INVALID_RESET_TOKEN);
     }
+
+    @Test
+    void rejectsMalformedRefreshTokenWithDomainError() {
+        assertThatThrownBy(() -> jwtProvider.validateRefreshToken("not-a-jwt"))
+                .isInstanceOf(AppException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INVALID_REFRESH_TOKEN);
+    }
 }
