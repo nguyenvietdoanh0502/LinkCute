@@ -1,0 +1,87 @@
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: ${DB_MAX_POOL_SIZE:5}
+      minimum-idle: ${DB_MIN_IDLE:1}
+      connection-timeout: 30000
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    show-sql: ${JPA_SHOW_SQL:false}
+    properties:
+      hibernate:
+        format_sql: false
+        jdbc:
+          batch_size: 500
+        order_inserts: true
+        order_updates: true
+
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD}
+      timeout: 2s
+      repositories:
+        enabled: false
+
+  mail:
+    host: ${MAIL_HOST}
+    port: ${MAIL_PORT}
+    username: ${MAIL_USERNAME}
+    password: ${MAIL_PASSWORD}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+server:
+  shutdown: graceful
+  forward-headers-strategy: framework
+  error:
+    include-message: never
+    include-stacktrace: never
+  compression:
+    enabled: true
+
+springdoc:
+  api-docs:
+    enabled: ${SWAGGER_ENABLED:false}
+  swagger-ui:
+    enabled: ${SWAGGER_ENABLED:false}
+
+roamly:
+  cors:
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:}
+  places:
+    csv-path: ${PLACE_DATA_CSV_PATH:data/full_data.csv}
+    overture-path: ${OVERTURE_DATA_PATH:data/overture-hanoi.geojson}
+    osm-path: ${OSM_DATA_PATH:data/osm-hanoi.json}
+    min-overture-confidence: ${MIN_OVERTURE_CONFIDENCE:0.60}
+  jwt:
+    secret: ${JWT_SECRET}
+    access-token-expiration: ${ACCESS_TOKEN_EXPIRATION:86400000}
+    refresh-token-expiration: ${REFRESH_TOKEN_EXPIRATION:2592000000}
+    reset-password-expiration: ${RESET_PASSWORD_TOKEN_EXPIRATION:300000}
+
+logging:
+  level:
+    root: ${ROOT_LOG_LEVEL:INFO}
+    com.hadilao.be: ${APP_LOG_LEVEL:INFO}
+    org.hibernate.SQL: ${HIBERNATE_SQL_LOG_LEVEL:WARN}

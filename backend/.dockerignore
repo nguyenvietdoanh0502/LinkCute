@@ -1,0 +1,16 @@
+.git
+.github
+.idea
+.vscode
+.claude
+.mvn
+target
+data
+plan
+scripts
+*.iml
+*.log
+.env
+.env.*
+!.env.example
+!.env.production.example
