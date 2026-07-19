@@ -1,0 +1,62 @@
+server:
+  port: 8080
+
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5433/roamly}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update # Allow automatic updates in local development
+    show-sql: ${JPA_SHOW_SQL:false}
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        jdbc:
+          batch_size: 500
+        order_inserts: true
+        order_updates: true
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6380}
+
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:lminhhieu2507@gmail.com}
+    password: ${MAIL_PASSWORD:bgcpomzycvqgzdtm}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+
+roamly:
+  places:
+    csv-path: ${PLACE_DATA_CSV_PATH:data/full_data.csv}
+    overture-path: ${OVERTURE_DATA_PATH:data/overture-hanoi.geojson}
+    osm-path: ${OSM_DATA_PATH:data/osm-hanoi.json}
+    min-overture-confidence: ${MIN_OVERTURE_CONFIDENCE:0.60}
+  jwt:
+    secret: ${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970} # Default secret for local dev
+    access-token-expiration: 86400000 # 24h
+    refresh-token-expiration: 2592000000
+    reset-password-expiration: ${RESET_PASSWORD_TOKEN_EXPIRATION:300000} # 5 minutes
+
+logging:
+  level:
+    com.hit.roamly: DEBUG
+    org.hibernate.SQL: ${HIBERNATE_SQL_LOG_LEVEL:INFO}
+    org.hibernate.type.descriptor.sql.BasicBinder: INFO

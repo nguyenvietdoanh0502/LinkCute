@@ -1,0 +1,7 @@
+Name,Category,Address,Rating,Reviews,Phone,Website,Scanned_At_Lat,Scanned_At_Lng
+Thai Market Restaurant - Le Van Thiem,Restaurant,"12 Le Van Thiem, Thanh Xuân, Ha Noi",4.5,120,0243000001,https://restaurant.example,21.0,105.8
+Cafe Test,Cafe,"1 Cau Giay, Ha Noi",4.3,80,,https://cafe.example,21.02,105.81
+Hotel Test,Hotel,"2 Hoan Kiem, Ha Noi",4.2,50,0243000002,,21.03,105.82
+Clothing Test,Clothing Store,"3 Ba Dinh, Ha Noi",4.1,20,,,21.04,105.83
+Supermarket Test,Supermarket,"4 Long Bien, Ha Noi",4.0,100,0243000003,https://supermarket.example,21.05,105.84
+Restaurant Two,Restaurant,"5 Dong Da, Ha Noi",3.9,12,,,21.06,105.85
