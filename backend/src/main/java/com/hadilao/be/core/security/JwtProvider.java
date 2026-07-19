@@ -11,6 +11,7 @@ import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 
 import java.security.Key;
@@ -119,16 +120,20 @@ public class JwtProvider {
     }
 
     public UserDetails validateRefreshToken(String refreshToken){
-        String email = extractUsername(refreshToken);
-        if(email==null){
+        try {
+            String email = extractUsername(refreshToken);
+            if (email == null) {
+                throw new AppException(ErrorCode.INVALID_REFRESH_TOKEN);
+            }
+            UserDetails userDetails = userDetailsService.loadUserByUsername(email);
+            String tokenType = extractClaim(refreshToken, claims -> claims.get("tokenType", String.class));
+            if (!"refresh".equals(tokenType) || isTokenExpired(refreshToken)) {
+                throw new AppException(ErrorCode.INVALID_REFRESH_TOKEN);
+            }
+            return userDetails;
+        } catch (JwtException | IllegalArgumentException | UsernameNotFoundException exception) {
             throw new AppException(ErrorCode.INVALID_REFRESH_TOKEN);
         }
-        UserDetails userDetails = userDetailsService.loadUserByUsername(email);
-        String tokenType = extractClaim(refreshToken,claims -> claims.get("tokenType",String.class));
-        if(!"refresh".equals(tokenType)||isTokenExpired(refreshToken)){
-            throw new AppException(ErrorCode.INVALID_REFRESH_TOKEN);
-        }
-        return userDetails;
     }
     private String buildToken(
             Map<String, Object> extraClaims,

@@ -1,10 +1,15 @@
 package com.hadilao.be.core.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.hadilao.be.core.common.ApiResponse;
+import com.hadilao.be.core.exception.ErrorCode;
 import com.hadilao.be.core.security.JwtAuthFilter;
 import com.hadilao.be.core.constant.UrlConstant;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.MediaType;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -15,6 +20,9 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.http.HttpMethod;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+
 @Configuration
 @EnableWebSecurity
 @RequiredArgsConstructor
@@ -23,6 +31,7 @@ public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
     private final AuthenticationProvider authenticationProvider;
+    private final ObjectMapper objectMapper;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -56,10 +65,24 @@ public class SecurityConfig {
                                 .anyRequest()
                                 .authenticated()
                 )
+                .exceptionHandling(exceptions -> exceptions
+                        .authenticationEntryPoint((request, response, exception) ->
+                                writeError(response, ErrorCode.UNAUTHENTICATED))
+                        .accessDeniedHandler((request, response, exception) ->
+                                writeError(response, ErrorCode.UNAUTHORIZED)))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authenticationProvider(authenticationProvider)
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
+    }
+
+    private void writeError(HttpServletResponse response, ErrorCode errorCode) throws IOException {
+        response.setStatus(errorCode.getHttpStatus());
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        objectMapper.writeValue(
+                response.getOutputStream(),
+                ApiResponse.error(errorCode.getHttpStatus(), errorCode.getMessage(), errorCode.getCode()));
     }
 }

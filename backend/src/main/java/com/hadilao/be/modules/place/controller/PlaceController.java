@@ -1,6 +1,7 @@
 package com.hadilao.be.modules.place.controller;
 
 import com.hadilao.be.core.common.ApiResponse;
+import com.hadilao.be.core.common.PageResponse;
 import com.hadilao.be.core.common.annotation.RestApiV1;
 import com.hadilao.be.core.constant.UrlConstant;
 import com.hadilao.be.modules.place.dto.*;
@@ -23,7 +24,7 @@ public class PlaceController {
     private final PlaceService placeService;
 
     @GetMapping(UrlConstant.Place.BASE)
-    public ResponseEntity<ApiResponse<Page<PlaceSummaryDTO>>> getPlaces(
+    public ResponseEntity<ApiResponse<PageResponse<PlaceSummaryDTO>>> getPlaces(
             @RequestParam(required = false) String q,
             @RequestParam(required = false) String bbox,
             @RequestParam(required = false) PlaceCategory category,
@@ -37,7 +38,7 @@ public class PlaceController {
 
         Page<PlaceSummaryDTO> places = placeService.getPlaces(
                 q, bbox, category, sourceCategory, district, priceMin, priceMax, openNow, page, size);
-        return ResponseEntity.ok(ApiResponse.success(places));
+        return ResponseEntity.ok(ApiResponse.success(PageResponse.from(places)));
     }
 
     @GetMapping(UrlConstant.Place.DETAIL)
