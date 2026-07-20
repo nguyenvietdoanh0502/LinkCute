@@ -69,6 +69,28 @@ class PlaceServiceTest {
     }
 
     @Nested
+    @DisplayName("getMapPlaces Tests")
+    class GetMapPlacesTests {
+
+        @Test
+        @DisplayName("Should normalize filters and return the lightweight map projection")
+        void testGetMapPlaces_WithFilters() {
+            PlaceMapDTO place = new PlaceMapDTO(
+                    UUID.randomUUID(), "Pho Bo", "Hoan Kiem",
+                    PlaceCategory.FOOD, 21.0285, 105.8542);
+            when(placeRepository.findMapPlaces("pho", PlaceCategory.FOOD, "hoan kiem"))
+                    .thenReturn(List.of(place));
+
+            List<PlaceMapDTO> result = placeService.getMapPlaces(
+                    " Phở ", PlaceCategory.FOOD, " Hoan Kiem ", false);
+
+            assertThat(result).containsExactly(place);
+            verify(placeRepository).findMapPlaces("pho", PlaceCategory.FOOD, "hoan kiem");
+            verifyNoInteractions(openingHourRepository);
+        }
+    }
+
+    @Nested
     @DisplayName("getPlaces Tests")
     class GetPlacesTests {
 
