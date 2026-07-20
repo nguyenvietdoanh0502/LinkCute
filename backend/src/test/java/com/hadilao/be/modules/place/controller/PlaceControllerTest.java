@@ -83,6 +83,36 @@ class PlaceControllerTest {
     }
 
     @Nested
+    @DisplayName("GET /api/v1/places/map")
+    class GetMapPlaces {
+
+        @Test
+        @DisplayName("Should return the lightweight unpaginated map dataset")
+        void testGetMapPlaces_Success() throws Exception {
+            UUID id = UUID.randomUUID();
+            PlaceMapDTO place = new PlaceMapDTO(
+                    id, "Pho Bo", "Hoan Kiem", PlaceCategory.FOOD, 21.0285, 105.8542);
+            when(placeService.getMapPlaces("pho", PlaceCategory.FOOD, "Hoan Kiem", false))
+                    .thenReturn(List.of(place));
+
+            mockMvc.perform(get("/api/v1/places/map")
+                            .param("q", "pho")
+                            .param("category", "FOOD")
+                            .param("district", "Hoan Kiem")
+                            .param("openNow", "false")
+                            .contentType(MediaType.APPLICATION_JSON))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value("success"))
+                    .andExpect(jsonPath("$.data[0].id").value(id.toString()))
+                    .andExpect(jsonPath("$.data[0].name").value("Pho Bo"))
+                    .andExpect(jsonPath("$.data[0].category").value("FOOD"))
+                    .andExpect(jsonPath("$.data[0].lat").value(21.0285))
+                    .andExpect(jsonPath("$.data[0].lng").value(105.8542))
+                    .andExpect(jsonPath("$.data[0].photoUrl").doesNotExist());
+        }
+    }
+
+    @Nested
     @DisplayName("GET /api/v1/places")
     class GetPlaces {
 

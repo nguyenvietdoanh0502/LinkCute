@@ -7,6 +7,7 @@ import com.hadilao.be.modules.place.dto.DistrictDTO;
 import com.hadilao.be.modules.place.dto.OpeningHourDTO;
 import com.hadilao.be.modules.place.dto.PhotoDTO;
 import com.hadilao.be.modules.place.dto.PlaceDetailDTO;
+import com.hadilao.be.modules.place.dto.PlaceMapDTO;
 import com.hadilao.be.modules.place.dto.PlaceSummaryDTO;
 import com.hadilao.be.modules.place.dto.ReviewDTO;
 import com.hadilao.be.modules.place.entity.OpeningHour;
@@ -38,6 +39,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -91,6 +93,38 @@ public class PlaceService {
                 .map(place -> mapToSummaryDTO(place, firstPhotoUrls.get(place.getId())))
                 .toList();
         return new PageImpl<>(content, pageable, places.getTotalElements());
+    }
+
+    @Transactional(readOnly = true)
+    public List<PlaceMapDTO> getMapPlaces(String q,
+                                         PlaceCategory category,
+                                         String district,
+                                         Boolean openNow) {
+        String normalizedQuery = q == null || q.isBlank()
+                ? null
+                : PlaceTextNormalizer.normalize(q);
+        if (normalizedQuery != null && normalizedQuery.isBlank()) {
+            normalizedQuery = null;
+        }
+
+        String normalizedDistrict = district == null || district.isBlank()
+                ? null
+                : district.trim().toLowerCase(Locale.ROOT);
+
+        List<PlaceMapDTO> places = placeRepository.findMapPlaces(
+                normalizedQuery, category, normalizedDistrict);
+
+        if (!Boolean.TRUE.equals(openNow)) {
+            return places;
+        }
+
+        Set<UUID> openPlaceIds = findOpenPlaceIds();
+        if (openPlaceIds.isEmpty()) {
+            return List.of();
+        }
+        return places.stream()
+                .filter(place -> openPlaceIds.contains(place.id()))
+                .toList();
     }
 
     @Transactional(readOnly = true)

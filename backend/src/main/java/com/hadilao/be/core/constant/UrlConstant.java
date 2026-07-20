@@ -18,6 +18,7 @@ public class UrlConstant {
 
     public static class Place {
         public static final String BASE = "/places";
+        public static final String MAP = "/places/map";
         public static final String DETAIL = "/places/{id}";
         public static final String CATEGORIES = "/categories";
         public static final String DISTRICTS = "/districts";
