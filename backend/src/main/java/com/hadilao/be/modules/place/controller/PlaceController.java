@@ -41,6 +41,16 @@ public class PlaceController {
         return ResponseEntity.ok(ApiResponse.success(PageResponse.from(places)));
     }
 
+    @GetMapping(UrlConstant.Place.MAP)
+    public ResponseEntity<ApiResponse<List<PlaceMapDTO>>> getMapPlaces(
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) PlaceCategory category,
+            @RequestParam(required = false) String district,
+            @RequestParam(required = false) Boolean openNow) {
+        List<PlaceMapDTO> places = placeService.getMapPlaces(q, category, district, openNow);
+        return ResponseEntity.ok(ApiResponse.success(places));
+    }
+
     @GetMapping(UrlConstant.Place.DETAIL)
     public ResponseEntity<ApiResponse<PlaceDetailDTO>> getPlaceById(@PathVariable UUID id) {
         PlaceDetailDTO place = placeService.getPlaceById(id);
