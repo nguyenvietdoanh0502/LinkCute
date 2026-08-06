@@ -56,8 +56,14 @@ Thư mục kết quả là `dist/`. Có thể deploy thư mục này lên Cloudf
 - `GET /api/v1/places/{id}`: xem thông tin, ảnh, giờ mở cửa và đánh giá của một địa điểm.
 - `GET /api/v1/categories`, `GET /api/v1/districts`: tạo bộ lọc động từ dữ liệu backend.
 - Nhóm `/api/v1/auth`: đăng ký, xác thực OTP, đăng nhập, refresh token, đăng xuất, quên/đặt lại/đổi mật khẩu.
+- Nhóm `/api/v1/friends`: tìm thành viên bằng mã `RML-xxxxxx`, gửi/chấp nhận/từ chối/thu hồi lời mời, xem danh sách bạn bè và hủy kết bạn. Tất cả endpoint trong nhóm này yêu cầu đăng nhập.
+- Nhóm `/api/v1/plans` và `/api/v1/plan-invitations`: xuất bản kế hoạch, đồng bộ nội dung, mời bạn bè, chấp nhận/từ chối/thu hồi lời mời, quản lý thành viên và rời kế hoạch. Tất cả endpoint trong hai nhóm này yêu cầu đăng nhập.
 
 API client nằm tại `src/api/client.js`. Nó đọc cấu trúc response chuẩn của backend, chuyển lỗi thành `ApiError`, tự gửi access token và tự refresh một lần khi endpoint được bảo vệ trả về HTTP 401.
+
+Giao diện bạn bè được mở từ thanh điều hướng hoặc màn hình tài khoản. Badge trên nút bạn bè hiển thị số lời mời đang chờ; drawer hỗ trợ bàn phím, khóa focus và tự chuyển sang bố cục toàn màn hình trên thiết bị nhỏ.
+
+Kế hoạch chưa chia sẻ vẫn được lưu cục bộ trong `localStorage` và có thể dùng khi chưa đăng nhập. Backend chỉ nhận một kế hoạch khi chủ kế hoạch bấm mời bạn lần đầu; từ thời điểm đó thay đổi của chủ được tự động đồng bộ. Kế hoạch người khác mời chỉ được giữ trong bộ nhớ của phiên đăng nhập, hiển thị ở chế độ chỉ đọc và không được ghi vào dữ liệu local của người nhận. Cache kế hoạch đã xuất bản luôn gắn với ID chủ sở hữu để không lộ giữa các tài khoản dùng chung trình duyệt.
 
 ## Lưu ý bảo mật
 

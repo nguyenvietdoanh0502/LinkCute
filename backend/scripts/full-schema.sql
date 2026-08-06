@@ -22,16 +22,40 @@ CREATE INDEX idx_users_full_name ON users(full_name) WHERE is_deleted = FALSE;
 -- 2. Friendships Table
 CREATE TABLE friendships (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    requester_id    UUID NOT NULL REFERENCES users(id),
-    addressee_id    UUID NOT NULL REFERENCES users(id),
+    user_low_id     UUID NOT NULL,
+    user_high_id    UUID NOT NULL,
+    requester_id    UUID NOT NULL,
+    status          VARCHAR(20) NOT NULL DEFAULT 'PENDING',
     created_at      TIMESTAMP NOT NULL DEFAULT NOW(),
-    
-    CONSTRAINT chk_no_self_friend CHECK (requester_id != addressee_id),
-    CONSTRAINT uq_friendship UNIQUE (requester_id, addressee_id)
+    updated_at      TIMESTAMP NOT NULL DEFAULT NOW(),
+    accepted_at     TIMESTAMP,
+
+    CONSTRAINT fk_friendships_user_low
+        FOREIGN KEY (user_low_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_friendships_user_high
+        FOREIGN KEY (user_high_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_friendships_requester
+        FOREIGN KEY (requester_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT chk_friendships_ordered_pair
+        CHECK (user_low_id < user_high_id),
+    CONSTRAINT chk_friendships_requester_member
+        CHECK (requester_id = user_low_id OR requester_id = user_high_id),
+    CONSTRAINT chk_friendships_status
+        CHECK (status IN ('PENDING', 'ACCEPTED')),
+    CONSTRAINT chk_friendships_accepted_at
+        CHECK (
+            (status = 'PENDING' AND accepted_at IS NULL)
+            OR (status = 'ACCEPTED' AND accepted_at IS NOT NULL)
+        ),
+    CONSTRAINT uq_friendships_user_pair UNIQUE (user_low_id, user_high_id)
 );
 
-CREATE INDEX idx_friendships_requester ON friendships(requester_id);
-CREATE INDEX idx_friendships_addressee ON friendships(addressee_id);
+CREATE INDEX idx_friendships_low_status_updated
+    ON friendships(user_low_id, status, updated_at DESC);
+CREATE INDEX idx_friendships_high_status_updated
+    ON friendships(user_high_id, status, updated_at DESC);
+CREATE INDEX idx_friendships_requester_status_updated
+    ON friendships(requester_id, status, updated_at DESC);
 
 -- 3. Groups Table
 CREATE TABLE groups (
@@ -61,53 +85,148 @@ CREATE TABLE group_members (
 
 CREATE INDEX idx_group_members_user_id ON group_members(user_id);
 
--- 5. Itineraries Table
-CREATE TABLE itineraries (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    group_id        UUID NOT NULL REFERENCES groups(id),
-    title           VARCHAR(200) NOT NULL,
-    prompt_used     TEXT,
-    destination     VARCHAR(200),
-    num_days        INT,
-    start_date      DATE,
-    end_date        DATE,
-    status          VARCHAR(20) NOT NULL DEFAULT 'COMPLETED',
-    created_by      UUID NOT NULL REFERENCES users(id),
-    created_at      TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_by      UUID REFERENCES users(id),
-    updated_at      TIMESTAMP NOT NULL DEFAULT NOW(),
-    is_deleted      BOOLEAN NOT NULL DEFAULT FALSE
+-- 5. Plans Table
+CREATE TABLE plans (
+    id                  UUID PRIMARY KEY,
+    owner_id            UUID NOT NULL,
+    client_plan_id      VARCHAR(128) NOT NULL,
+    name                VARCHAR(200) NOT NULL,
+    planned_date        DATE NOT NULL,
+    client_updated_at   TIMESTAMP NOT NULL,
+    version             BIGINT NOT NULL DEFAULT 0,
+    created_at          TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMP NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT fk_plans_owner
+        FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT chk_plans_version
+        CHECK (version >= 0),
+    CONSTRAINT uq_plans_owner_client_plan
+        UNIQUE (owner_id, client_plan_id)
 );
 
-CREATE INDEX idx_itineraries_group_id ON itineraries(group_id) WHERE is_deleted = FALSE;
+CREATE INDEX idx_plans_owner_updated
+    ON plans(owner_id, updated_at DESC);
 
--- 6. Itinerary Items Table
-CREATE TABLE itinerary_items (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    itinerary_id    UUID NOT NULL REFERENCES itineraries(id),
-    day_number      INT NOT NULL,
-    time_of_day     VARCHAR(15) NOT NULL,
-    sort_order      INT NOT NULL DEFAULT 0,
-    place_name      VARCHAR(255) NOT NULL,
-    address         TEXT,
-    google_place_id VARCHAR(255),
-    latitude        DECIMAL(10, 8),
-    longitude       DECIMAL(11, 8),
-    opening_hours   TEXT,
-    rating          DECIMAL(2, 1),
-    expected_cost   DECIMAL(15, 2) DEFAULT 0,
-    currency        VARCHAR(5) DEFAULT 'VND',
-    note            TEXT,
-    is_custom       BOOLEAN NOT NULL DEFAULT FALSE,
-    created_by      UUID NOT NULL REFERENCES users(id),
-    created_at      TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_by      UUID REFERENCES users(id),
-    updated_at      TIMESTAMP NOT NULL DEFAULT NOW()
+-- 6. Plan Items Table
+CREATE TABLE plan_items (
+    id                  UUID PRIMARY KEY,
+    plan_id             UUID NOT NULL,
+    client_item_id      VARCHAR(128) NOT NULL,
+    position            INT NOT NULL,
+    place_id            UUID NOT NULL,
+    place_name          VARCHAR(255) NOT NULL,
+    place_address       TEXT,
+    place_district      VARCHAR(100),
+    place_category      VARCHAR(50) NOT NULL,
+    place_photo_url     TEXT,
+    place_lat           DOUBLE PRECISION,
+    place_lng           DOUBLE PRECISION,
+    place_price_level   INT,
+    place_price_min     DOUBLE PRECISION,
+    place_price_max     DOUBLE PRECISION,
+    start_time          TIME,
+    end_time            TIME,
+
+    CONSTRAINT fk_plan_items_plan
+        FOREIGN KEY (plan_id) REFERENCES plans(id) ON DELETE CASCADE,
+    CONSTRAINT fk_plan_items_place
+        FOREIGN KEY (place_id) REFERENCES places(id),
+    CONSTRAINT chk_plan_items_position
+        CHECK (position >= 0),
+    CONSTRAINT chk_plan_items_latitude
+        CHECK (place_lat IS NULL OR (place_lat >= -90 AND place_lat <= 90)),
+    CONSTRAINT chk_plan_items_longitude
+        CHECK (place_lng IS NULL OR (place_lng >= -180 AND place_lng <= 180)),
+    CONSTRAINT chk_plan_items_price_level
+        CHECK (place_price_level IS NULL OR place_price_level >= 0),
+    CONSTRAINT chk_plan_items_price_range
+        CHECK (
+            (place_price_min IS NULL OR place_price_min >= 0)
+            AND (place_price_max IS NULL OR place_price_max >= 0)
+            AND (
+                place_price_min IS NULL
+                OR place_price_max IS NULL
+                OR place_price_max >= place_price_min
+            )
+        ),
+    CONSTRAINT chk_plan_items_time_range
+        CHECK (start_time IS NULL OR end_time IS NULL OR end_time > start_time),
+    CONSTRAINT uq_plan_items_client_item
+        UNIQUE (plan_id, client_item_id),
+    CONSTRAINT uq_plan_items_place
+        UNIQUE (plan_id, place_id)
 );
 
-CREATE INDEX idx_itinerary_items_itinerary_id ON itinerary_items(itinerary_id);
+CREATE INDEX idx_plan_items_plan_position
+    ON plan_items(plan_id, position);
+CREATE INDEX idx_plan_items_place
+    ON plan_items(place_id);
 
--- 7. Messages Table
+-- 7. Plan Invitations Table
+CREATE TABLE plan_invitations (
+    id                  UUID PRIMARY KEY,
+    plan_id             UUID NOT NULL,
+    inviter_id          UUID NOT NULL,
+    invitee_id          UUID NOT NULL,
+    status              VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    sent_at             TIMESTAMP NOT NULL DEFAULT NOW(),
+    responded_at        TIMESTAMP,
+    created_at          TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMP NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT fk_plan_invitations_plan
+        FOREIGN KEY (plan_id) REFERENCES plans(id) ON DELETE CASCADE,
+    CONSTRAINT fk_plan_invitations_inviter
+        FOREIGN KEY (inviter_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_plan_invitations_invitee
+        FOREIGN KEY (invitee_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT chk_plan_invitations_not_self
+        CHECK (inviter_id <> invitee_id),
+    CONSTRAINT chk_plan_invitations_status
+        CHECK (status IN ('PENDING', 'ACCEPTED', 'DECLINED', 'CANCELLED')),
+    CONSTRAINT chk_plan_invitations_response_time
+        CHECK (
+            (status = 'PENDING' AND responded_at IS NULL)
+            OR (status <> 'PENDING' AND responded_at IS NOT NULL)
+        ),
+    CONSTRAINT uq_plan_invitations_plan_invitee
+        UNIQUE (plan_id, invitee_id)
+);
+
+CREATE INDEX idx_plan_invitations_invitee_status_sent
+    ON plan_invitations(invitee_id, status, sent_at DESC);
+CREATE INDEX idx_plan_invitations_plan_status_sent
+    ON plan_invitations(plan_id, status, sent_at DESC);
+CREATE INDEX idx_plan_invitations_inviter_sent
+    ON plan_invitations(inviter_id, sent_at DESC);
+
+-- 8. Plan Members Table
+CREATE TABLE plan_members (
+    id                  UUID PRIMARY KEY,
+    plan_id             UUID NOT NULL,
+    user_id             UUID NOT NULL,
+    invitation_id       UUID,
+    joined_at           TIMESTAMP NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT fk_plan_members_plan
+        FOREIGN KEY (plan_id) REFERENCES plans(id) ON DELETE CASCADE,
+    CONSTRAINT fk_plan_members_user
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_plan_members_invitation
+        FOREIGN KEY (invitation_id) REFERENCES plan_invitations(id) ON DELETE SET NULL,
+    CONSTRAINT uq_plan_members_invitation
+        UNIQUE (invitation_id),
+    CONSTRAINT uq_plan_members_plan_user
+        UNIQUE (plan_id, user_id)
+);
+
+CREATE INDEX idx_plan_members_user_joined
+    ON plan_members(user_id, joined_at DESC);
+CREATE INDEX idx_plan_members_plan_joined
+    ON plan_members(plan_id, joined_at);
+
+-- 9. Messages Table
 CREATE TABLE messages (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     group_id        UUID NOT NULL REFERENCES groups(id),

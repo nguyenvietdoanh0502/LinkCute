@@ -170,6 +170,111 @@ export const api = {
   changePassword(body) {
     return request('/auth/change-password', { method: 'POST', body, auth: true })
   },
+  searchFriend(pinCode, options = {}) {
+    return request(`/friends/search?${queryString({ pinCode })}`, { ...options, auth: true })
+      .then((response) => response.data)
+  },
+  getFriends(options = {}) {
+    return request('/friends', { ...options, auth: true }).then((response) => response.data)
+  },
+  getIncomingFriendRequests(options = {}) {
+    return request('/friends/requests/incoming', { ...options, auth: true })
+      .then((response) => response.data)
+  },
+  getOutgoingFriendRequests(options = {}) {
+    return request('/friends/requests/outgoing', { ...options, auth: true })
+      .then((response) => response.data)
+  },
+  sendFriendRequest(addresseeId) {
+    return request('/friends/requests', {
+      method: 'POST',
+      body: { addresseeId },
+      auth: true,
+    }).then((response) => response?.data ?? null)
+  },
+  acceptFriendRequest(requestId) {
+    return request(`/friends/requests/${encodeURIComponent(requestId)}/accept`, {
+      method: 'POST',
+      auth: true,
+    }).then((response) => response?.data ?? null)
+  },
+  deleteFriendRequest(requestId) {
+    return request(`/friends/requests/${encodeURIComponent(requestId)}`, {
+      method: 'DELETE',
+      auth: true,
+    }).then((response) => response?.data ?? null)
+  },
+  removeFriend(friendshipId) {
+    return request(`/friends/${encodeURIComponent(friendshipId)}`, {
+      method: 'DELETE',
+      auth: true,
+    }).then((response) => response?.data ?? null)
+  },
+  getPlans(options = {}) {
+    return request('/plans', { ...options, auth: true }).then((response) => response.data)
+  },
+  syncPlan(body) {
+    return request('/plans/sync', {
+      method: 'POST',
+      body,
+      auth: true,
+    }).then((response) => response?.data ?? null)
+  },
+  getPlan(planId, options = {}) {
+    return request(`/plans/${encodeURIComponent(planId)}`, { ...options, auth: true })
+      .then((response) => response.data)
+  },
+  deletePlan(planId) {
+    return request(`/plans/${encodeURIComponent(planId)}`, {
+      method: 'DELETE',
+      auth: true,
+    }).then((response) => response?.data ?? null)
+  },
+  getIncomingPlanInvitations(options = {}) {
+    return request('/plan-invitations/incoming', { ...options, auth: true })
+      .then((response) => response.data)
+  },
+  getOutgoingPlanInvitations(options = {}) {
+    return request('/plan-invitations/outgoing', { ...options, auth: true })
+      .then((response) => response.data)
+  },
+  inviteToPlan(planId, inviteeId) {
+    return request(`/plans/${encodeURIComponent(planId)}/invitations`, {
+      method: 'POST',
+      body: { inviteeId },
+      auth: true,
+    }).then((response) => response?.data ?? null)
+  },
+  acceptPlanInvitation(invitationId) {
+    return request(`/plan-invitations/${encodeURIComponent(invitationId)}/accept`, {
+      method: 'POST',
+      auth: true,
+    }).then((response) => response?.data ?? null)
+  },
+  declinePlanInvitation(invitationId) {
+    return request(`/plan-invitations/${encodeURIComponent(invitationId)}/decline`, {
+      method: 'POST',
+      auth: true,
+    }).then((response) => response?.data ?? null)
+  },
+  cancelPlanInvitation(invitationId) {
+    return request(`/plan-invitations/${encodeURIComponent(invitationId)}`, {
+      method: 'DELETE',
+      auth: true,
+    }).then((response) => response?.data ?? null)
+  },
+  removePlanMember(planId, userId) {
+    return request(`/plans/${encodeURIComponent(planId)}/members/${encodeURIComponent(userId)}`, {
+      method: 'DELETE',
+      auth: true,
+    }).then((response) => response?.data ?? null)
+  },
+  leavePlan(planId) {
+    return request(`/plans/${encodeURIComponent(planId)}/membership`, {
+      method: 'DELETE',
+      auth: true,
+    }).then((response) => response?.data ?? null)
+  },
   async logout() {
     try {
       await request('/auth/logout', { method: 'POST', auth: true })

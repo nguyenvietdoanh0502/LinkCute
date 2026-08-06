@@ -1,7 +1,8 @@
 import maplibregl from 'maplibre-gl'
-import { Cloud, KeyRound, MapPinned } from 'lucide-react'
+import { Clock3, Cloud, KeyRound, MapPin, MapPinned, Search, Tags, X } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { categoryLabel } from './PlaceCard.jsx'
+import SelectDropdown from './SelectDropdown.jsx'
 
 const HANOI_CENTER = [105.8342, 21.0278]
 const DEFAULT_REGION = 'ap-southeast-1'
@@ -308,7 +309,76 @@ function addPlaceLayers(map) {
   })
 }
 
-export default function AwsPlacesMap({ places = [], loading = false, error = '', onSelect }) {
+function FullscreenMapFilters({ filters }) {
+  if (!filters) return null
+
+  return (
+    <div className="map-fullscreen-filters" aria-label="Bộ lọc bản đồ toàn màn hình">
+      <label className="map-overlay-field map-overlay-search">
+        <Search size={17} />
+        <input
+          value={filters.search}
+          onChange={(event) => filters.onSearchChange(event.target.value)}
+          placeholder="Tên hoặc địa chỉ…"
+          aria-label="Tìm kiếm trên bản đồ"
+        />
+        {filters.search && (
+          <button type="button" onClick={() => filters.onSearchChange('')} aria-label="Xóa tìm kiếm">
+            <X size={15} />
+          </button>
+        )}
+      </label>
+
+      <SelectDropdown
+        className="map-overlay-dropdown"
+        value={filters.district}
+        onChange={filters.onDistrictChange}
+        icon={<MapPin size={17} />}
+        ariaLabel="Chọn khu vực trên bản đồ"
+        searchable
+        searchPlaceholder="Tìm khu vực…"
+        options={[
+          { value: '', label: 'Mọi khu vực' },
+          ...filters.districts.map((item) => ({
+            value: item.district,
+            label: item.district,
+            count: item.count,
+          })),
+        ]}
+      />
+
+      <SelectDropdown
+        className="map-overlay-dropdown"
+        value={filters.category}
+        onChange={filters.onCategoryChange}
+        icon={<Tags size={17} />}
+        ariaLabel="Chọn danh mục trên bản đồ"
+        options={[
+          { value: '', label: 'Mọi category' },
+          ...filters.categories.map((item) => ({
+            value: item.category,
+            label: item.name || categoryLabel(item.category),
+            count: item.count,
+          })),
+        ]}
+      />
+
+      <label className="map-overlay-toggle">
+        <input
+          type="checkbox"
+          checked={filters.openNow}
+          onChange={(event) => filters.onOpenNowChange(event.target.checked)}
+        />
+        <span className="toggle-filter__track"><span /></span>
+        <Clock3 size={16} />
+        <span>Đang mở cửa</span>
+      </label>
+    </div>
+  )
+}
+
+export default function AwsPlacesMap({ places = [], loading = false, error = '', onSelect, filters = null }) {
+  const panelRef = useRef(null)
   const containerRef = useRef(null)
   const mapRef = useRef(null)
   const popupRef = useRef(null)
@@ -328,7 +398,7 @@ export default function AwsPlacesMap({ places = [], loading = false, error = '',
   }, [validPlaces])
 
   useEffect(() => {
-    if (!apiKey || !containerRef.current) return undefined
+    if (!apiKey || !panelRef.current || !containerRef.current) return undefined
 
     setMapError('')
     setMapReady(false)
@@ -345,9 +415,17 @@ export default function AwsPlacesMap({ places = [], loading = false, error = '',
       minZoom: 5,
       maxZoom: 19,
       attributionControl: false,
+      locale: {
+        'FullscreenControl.Enter': 'Mở bản đồ toàn màn hình',
+        'FullscreenControl.Exit': 'Thoát toàn màn hình',
+      },
     })
 
     mapRef.current = map
+    map.addControl(new maplibregl.FullscreenControl({
+      container: panelRef.current,
+      pseudo: true,
+    }), 'top-right')
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right')
     map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right')
 
@@ -468,13 +546,15 @@ export default function AwsPlacesMap({ places = [], loading = false, error = '',
   }
 
   return (
-    <div className="aws-map-panel">
+    <div ref={panelRef} className="aws-map-panel">
       <div ref={containerRef} className="aws-map-canvas" aria-label="Bản đồ Amazon Location chứa các địa điểm tìm được" />
 
       <div className="map-result-badge">
         <span><MapPinned size={17} /></span>
         <div><strong>{validPlaces.length} địa điểm</strong><small>Amazon Location Maps</small></div>
       </div>
+
+      <FullscreenMapFilters filters={filters} />
 
       {(loading || (!mapReady && !mapError)) && (
         <div className="map-loading"><span className="loader" /><p>Đang tải bản đồ AWS và các điểm đến…</p></div>

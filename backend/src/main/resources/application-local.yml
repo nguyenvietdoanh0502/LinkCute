@@ -46,6 +46,8 @@ spring:
     baseline-on-migrate: true
 
 roamly:
+  cors:
+    allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
   places:
     csv-path: ${PLACE_DATA_CSV_PATH:data/full_data.csv}
     overture-path: ${OVERTURE_DATA_PATH:data/overture-hanoi.geojson}
