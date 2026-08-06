@@ -1,6 +1,7 @@
 import {
   ArrowLeft,
   ArrowRight,
+  CalendarDays,
   ChevronDown,
   Compass,
   LayoutGrid,
@@ -12,15 +13,22 @@ import {
   SlidersHorizontal,
   Sparkles,
   UserRound,
+  UsersRound,
   X,
 } from 'lucide-react'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { api, getStoredSession, subscribeSession } from './api/client.js'
 import AuthModal from './components/AuthModal.jsx'
+import FriendsPanel from './components/FriendsPanel.jsx'
+import ItineraryPanel from './components/ItineraryPanel.jsx'
 import PlaceCard, { categoryLabel } from './components/PlaceCard.jsx'
 import PlaceDetailModal from './components/PlaceDetailModal.jsx'
+import SelectDropdown from './components/SelectDropdown.jsx'
 import Toast from './components/Toast.jsx'
 import { useDebouncedValue } from './hooks/useDebouncedValue.js'
+import { useFriendships } from './hooks/useFriendships.js'
+import { useItineraryPlans } from './hooks/useItineraryPlans.js'
+import { usePlanSharing } from './hooks/usePlanSharing.js'
 
 const CATEGORY_ICONS = {
   FOOD: '✦',
@@ -76,13 +84,95 @@ export default function App() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState('')
   const [toast, setToast] = useState(null)
+  const [itineraryOpen, setItineraryOpen] = useState(false)
+  const [friendsOpen, setFriendsOpen] = useState(false)
+  const [pendingPlace, setPendingPlace] = useState(null)
+  const [sharedActivePlanId, setSharedActivePlanId] = useState(null)
+  const [resumeAfterAuth, setResumeAfterAuth] = useState(null)
+  const [itineraryInitialSubview, setItineraryInitialSubview] = useState('plan')
   const debouncedSearch = useDebouncedValue(search, 450)
+  const {
+    plans: localPlans,
+    activePlan: localActivePlan,
+    storageError,
+    createPlan: createLocalPlan,
+    setActivePlan: setLocalActivePlan,
+    updatePlan: updateLocalPlan,
+    deletePlan: deleteLocalPlan,
+    addPlace: addLocalPlace,
+    removeItem: removeLocalItem,
+    moveItem: moveLocalItem,
+    updateItemTime: updateLocalItemTime,
+    upsertOwnedRemotePlan,
+    clearPlanServerLink,
+  } = useItineraryPlans(session)
+  const friendshipState = useFriendships(session)
+  const planSharingState = usePlanSharing({
+    session,
+    localPlans,
+    upsertOwnedRemotePlan,
+    clearPlanServerLink,
+  })
+  const plans = planSharingState.plans
+  const activePlan = useMemo(() => (
+    (sharedActivePlanId
+      ? planSharingState.memberPlans.find((plan) => plan.id === sharedActivePlanId)
+      : null)
+    || planSharingState.ownerPlans.find((plan) => plan.id === localActivePlan?.id)
+    || planSharingState.ownerPlans[0]
+    || planSharingState.memberPlans[0]
+    || null
+  ), [
+    localActivePlan?.id,
+    planSharingState.memberPlans,
+    planSharingState.ownerPlans,
+    sharedActivePlanId,
+  ])
+  const localAddTargetPlan = useMemo(() => (
+    planSharingState.ownerPlans.find((plan) => plan.id === localActivePlan?.id)
+    || planSharingState.ownerPlans[0]
+    || null
+  ), [localActivePlan?.id, planSharingState.ownerPlans])
 
-  const showToast = useCallback((message) => {
-    setToast({ message, id: Date.now() })
+  const showToast = useCallback((message, type = 'success') => {
+    setToast({ message, type, id: `${Date.now()}-${Math.random()}` })
   }, [])
+  const closeFriends = useCallback(() => setFriendsOpen(false), [])
 
   useEffect(() => subscribeSession(setSession), [])
+
+  useEffect(() => {
+    if (!session) {
+      closeFriends()
+      setSharedActivePlanId(null)
+    }
+  }, [closeFriends, session])
+
+  useEffect(() => {
+    if (!session || resumeAfterAuth !== 'plan-people') return
+    setAuthMode(null)
+    setResumeAfterAuth(null)
+    setItineraryInitialSubview('people')
+    setFriendsOpen(false)
+    setItineraryOpen(true)
+  }, [resumeAfterAuth, session])
+
+  useEffect(() => {
+    if (!sharedActivePlanId || planSharingState.loading) return
+    if (planSharingState.memberPlans.some((plan) => plan.id === sharedActivePlanId)) return
+    const timer = window.setTimeout(() => setSharedActivePlanId(null), 0)
+    return () => window.clearTimeout(timer)
+  }, [planSharingState.loading, planSharingState.memberPlans, sharedActivePlanId])
+
+  useEffect(() => {
+    if (storageError) showToast(storageError, 'error')
+  }, [showToast, storageError])
+
+  useEffect(() => {
+    if (!planSharingState.syncError) return
+    showToast(planSharingState.syncError, 'error')
+    planSharingState.clearSyncError()
+  }, [planSharingState, showToast])
 
   useEffect(() => {
     let active = true
@@ -169,6 +259,107 @@ export default function App() {
     setDetailLoading(false)
   }, [])
 
+  const closeItinerary = useCallback(() => {
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur()
+    }
+    setItineraryOpen(false)
+    setPendingPlace(null)
+    setSharedActivePlanId(null)
+    setItineraryInitialSubview('plan')
+  }, [])
+
+  const handleSelectPlan = useCallback((planId) => {
+    if (planSharingState.memberPlans.some((plan) => plan.id === planId)) {
+      setSharedActivePlanId(planId)
+      return
+    }
+    setSharedActivePlanId(null)
+    setLocalActivePlan(planId)
+  }, [planSharingState.memberPlans, setLocalActivePlan])
+
+  const handleAddToPlan = useCallback((place) => {
+    const result = addLocalPlace(place, localAddTargetPlan?.id)
+    if (result.ok) {
+      showToast(`Đã thêm ${place.name} vào ${localAddTargetPlan.name}.`)
+      return
+    }
+    if (result.reason === 'duplicate') {
+      showToast(`${place.name} đã có trong kế hoạch này.`, 'error')
+      return
+    }
+    if (result.reason === 'invalid-place') {
+      showToast('Địa điểm này chưa đủ thông tin để thêm vào kế hoạch.', 'error')
+      return
+    }
+
+    setPendingPlace(place)
+    closeDetail()
+    closeFriends()
+    setItineraryOpen(true)
+    showToast('Tạo kế hoạch đầu tiên, LinkCute sẽ tự thêm địa điểm này.')
+  }, [addLocalPlace, closeDetail, closeFriends, localAddTargetPlan, showToast])
+
+  const handleCreatePlan = useCallback(({ name, date, initialPlace }) => {
+    const placeToAdd = initialPlace || pendingPlace
+    const planId = createLocalPlan({ name, date, initialPlace: placeToAdd })
+    setSharedActivePlanId(null)
+    setPendingPlace(null)
+    showToast(placeToAdd
+      ? `Đã tạo kế hoạch và thêm ${placeToAdd.name}.`
+      : 'Đã tạo kế hoạch mới.')
+    return planId
+  }, [createLocalPlan, pendingPlace, showToast])
+
+  const handleUpdatePlan = useCallback((planId, meta) => {
+    if (activePlan?.accessRole === 'MEMBER') return
+    updateLocalPlan(planId, meta)
+  }, [activePlan?.accessRole, updateLocalPlan])
+
+  const handleDeletePlan = useCallback(async (planId) => {
+    const plan = plans.find((candidate) => candidate.id === planId)
+    if (!plan || plan.accessRole === 'MEMBER') return
+    const deleted = await planSharingState.deletePublishedPlan(plan)
+    if (deleted === null || deleted === undefined) return false
+    deleteLocalPlan(planId)
+    setSharedActivePlanId(null)
+    showToast(`Đã xóa “${plan.name}”.`)
+    return true
+  }, [deleteLocalPlan, planSharingState, plans, showToast])
+
+  const handleRemoveItem = useCallback((planId, itemId) => {
+    if (activePlan?.accessRole === 'MEMBER') return
+    removeLocalItem(planId, itemId)
+  }, [activePlan?.accessRole, removeLocalItem])
+
+  const handleMoveItem = useCallback((planId, itemId, direction) => {
+    if (activePlan?.accessRole === 'MEMBER') return
+    moveLocalItem(planId, itemId, direction)
+  }, [activePlan?.accessRole, moveLocalItem])
+
+  const handleUpdateItemTime = useCallback((planId, itemId, startTime, endTime) => {
+    if (activePlan?.accessRole === 'MEMBER') return
+    updateLocalItemTime(planId, itemId, startTime, endTime)
+  }, [activePlan?.accessRole, updateLocalItemTime])
+
+  const isPlaceInSelectedPlan = useCallback(
+    (placeId) => Boolean(localAddTargetPlan?.items?.some((item) => item.place.id === String(placeId))),
+    [localAddTargetPlan],
+  )
+
+  const requireLoginForSharing = useCallback(() => {
+    setResumeAfterAuth('plan-people')
+    setItineraryOpen(false)
+    setAuthMode('login')
+    showToast('Đăng nhập để mời bạn bè vào kế hoạch.')
+  }, [showToast])
+
+  const openFriendsFromPlan = useCallback(() => {
+    setItineraryOpen(false)
+    setItineraryInitialSubview('plan')
+    setFriendsOpen(true)
+  }, [])
+
   const clearFilters = () => {
     setSearch('')
     setCategory('')
@@ -194,14 +385,56 @@ export default function App() {
           <a href="#about">Về LinkCute</a>
         </nav>
 
-        <button className="account-button" type="button" onClick={() => setAuthMode(session ? 'account' : 'login')}>
-          {session ? (
-            <>
-              <span className="account-button__avatar">{session.user?.fullName?.charAt(0)?.toUpperCase() || 'L'}</span>
-              <span>{session.user?.fullName?.split(' ').slice(-1)[0] || 'Tài khoản'}</span>
-            </>
-          ) : <><UserRound size={17} /> Đăng nhập</>}
-        </button>
+        <div className="header-actions">
+          <button
+            className="itinerary-launcher"
+            type="button"
+            onClick={() => {
+              setPendingPlace(null)
+              setFriendsOpen(false)
+              setItineraryInitialSubview('plan')
+              setItineraryOpen(true)
+            }}
+            aria-haspopup="dialog"
+            aria-label={`Mở kế hoạch${activePlan ? ` ${activePlan.name}, ${activePlan.items.length} địa điểm` : ''}${planSharingState.incomingCount ? `, ${planSharingState.incomingCount} lời mời mới` : ''}`}
+          >
+            <CalendarDays size={17} />
+            <span className="itinerary-launcher__label">Kế hoạch</span>
+            {activePlan?.items.length > 0 && <span className="itinerary-launcher__badge">{activePlan.items.length}</span>}
+            {planSharingState.incomingCount > 0 && (
+              <span className="itinerary-launcher__invite-badge">{planSharingState.incomingCount}</span>
+            )}
+          </button>
+          {session && (
+            <button
+              className="friends-launcher"
+              type="button"
+              onClick={() => {
+                setPendingPlace(null)
+                setItineraryOpen(false)
+                setFriendsOpen(true)
+              }}
+              aria-haspopup="dialog"
+              aria-label={`Mở bạn bè${friendshipState.incomingRequests.length
+                ? `, ${friendshipState.incomingRequests.length} lời mời đang chờ`
+                : ''}`}
+            >
+              <UsersRound size={17} aria-hidden="true" />
+              <span className="friends-launcher__label">Bạn bè</span>
+              {friendshipState.incomingRequests.length > 0 && (
+                <span className="friends-launcher__badge">{friendshipState.incomingRequests.length}</span>
+              )}
+            </button>
+          )}
+          <button className="account-button" type="button" onClick={() => setAuthMode(session ? 'account' : 'login')}>
+            {session ? (
+              <>
+                <span className="account-button__avatar">{session.user?.fullName?.charAt(0)?.toUpperCase() || 'L'}</span>
+                <span>{session.user?.fullName?.split(' ').slice(-1)[0] || 'Tài khoản'}</span>
+              </>
+            ) : <><UserRound size={17} /><span>Đăng nhập</span></>}
+          </button>
+        </div>
       </header>
 
       <main id="top">
@@ -289,14 +522,23 @@ export default function App() {
               <Search size={18} />
               <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tên hoặc địa chỉ…" aria-label="Tìm theo tên hoặc địa chỉ" />
             </label>
-            <label className="select-field">
-              <MapPin size={17} />
-              <select value={district} onChange={(event) => setDistrict(event.target.value)} aria-label="Chọn quận huyện">
-                <option value="">Mọi khu vực</option>
-                {districts.map((item) => <option key={item.district} value={item.district}>{item.district} ({item.count?.toLocaleString('vi-VN')})</option>)}
-              </select>
-              <ChevronDown size={15} />
-            </label>
+            <SelectDropdown
+              className="filter-dropdown"
+              value={district}
+              onChange={setDistrict}
+              icon={<MapPin size={17} />}
+              ariaLabel="Chọn quận huyện"
+              searchable
+              searchPlaceholder="Tìm quận, huyện…"
+              options={[
+                { value: '', label: 'Mọi khu vực' },
+                ...districts.map((item) => ({
+                  value: item.district,
+                  label: item.district,
+                  count: item.count,
+                })),
+              ]}
+            />
             <label className="toggle-filter">
               <input type="checkbox" checked={openNow} onChange={(event) => setOpenNow(event.target.checked)} />
               <span className="toggle-filter__track"><span /></span>
@@ -318,13 +560,38 @@ export default function App() {
             <div className="place-grid">
               {loading
                 ? Array.from({ length: 8 }, (_, index) => <SkeletonCard key={index} />)
-                : placePage?.content?.map((place) => <PlaceCard key={place.id} place={place} onSelect={selectPlace} />)}
+                : placePage?.content?.map((place) => (
+                  <PlaceCard
+                    key={place.id}
+                    place={place}
+                    onSelect={selectPlace}
+                    onAddToPlan={handleAddToPlan}
+                    isInPlan={isPlaceInSelectedPlan(place.id)}
+                  />
+                ))}
             </div>
           )}
 
           {viewMode === 'map' && (
             <Suspense fallback={<div className="map-setup-state"><span className="loader" /><p>Đang chuẩn bị trình hiển thị bản đồ…</p></div>}>
-              <AwsPlacesMap places={mapPlaces} loading={mapLoading} error={mapPlacesError} onSelect={selectPlace} />
+              <AwsPlacesMap
+                places={mapPlaces}
+                loading={mapLoading}
+                error={mapPlacesError}
+                onSelect={selectPlace}
+                filters={{
+                  search,
+                  category,
+                  district,
+                  openNow,
+                  categories,
+                  districts,
+                  onSearchChange: setSearch,
+                  onCategoryChange: setCategory,
+                  onDistrictChange: setDistrict,
+                  onOpenNowChange: setOpenNow,
+                }}
+              />
             </Suspense>
           )}
 
@@ -364,8 +631,63 @@ export default function App() {
         <a href="https://linkcute.duckdns.org" target="_blank" rel="noreferrer">API production <span className="online-dot" /> Online</a>
       </footer>
 
-      {(selectedPlace || detailLoading || detailError) && <PlaceDetailModal detail={selectedPlace} loading={detailLoading} error={detailError} onClose={closeDetail} />}
-      {authMode && <AuthModal session={session} initialMode={authMode} onClose={() => setAuthMode(null)} showToast={showToast} />}
+      <ItineraryPanel
+        open={itineraryOpen}
+        onClose={closeItinerary}
+        plans={plans}
+        activePlan={activePlan}
+        pendingPlace={pendingPlace}
+        storageError={storageError}
+        session={session}
+        friendshipState={friendshipState}
+        planSharingState={planSharingState}
+        initialSubview={itineraryInitialSubview}
+        showToast={showToast}
+        onRequireLogin={requireLoginForSharing}
+        onOpenFriends={openFriendsFromPlan}
+        onCreatePlan={handleCreatePlan}
+        onSelectPlan={handleSelectPlan}
+        onSelectAcceptedPlan={setSharedActivePlanId}
+        onUpdatePlan={handleUpdatePlan}
+        onDeletePlan={handleDeletePlan}
+        onRemoveItem={handleRemoveItem}
+        onMoveItem={handleMoveItem}
+        onUpdateItemTime={handleUpdateItemTime}
+      />
+      <FriendsPanel
+        open={friendsOpen}
+        onClose={closeFriends}
+        session={session}
+        friendshipState={friendshipState}
+        showToast={showToast}
+      />
+      {(selectedPlace || detailLoading || detailError) && (
+        <PlaceDetailModal
+          detail={selectedPlace}
+          loading={detailLoading}
+          error={detailError}
+          onClose={closeDetail}
+          onAddToPlan={handleAddToPlan}
+          isInPlan={isPlaceInSelectedPlan(selectedPlace?.id)}
+          activePlanName={localAddTargetPlan?.name}
+        />
+      )}
+      {authMode && (
+        <AuthModal
+          session={session}
+          initialMode={authMode}
+          onClose={() => {
+            setAuthMode(null)
+            if (!getStoredSession()) setResumeAfterAuth(null)
+          }}
+          onOpenFriends={() => {
+            setAuthMode(null)
+            setItineraryOpen(false)
+            setFriendsOpen(true)
+          }}
+          showToast={showToast}
+        />
+      )}
       {toast && <Toast key={toast.id} toast={toast} onClose={() => setToast(null)} />}
     </div>
   )

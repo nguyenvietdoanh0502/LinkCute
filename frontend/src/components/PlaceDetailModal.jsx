@@ -1,4 +1,6 @@
 import {
+  CalendarPlus,
+  Check,
   Clock3,
   ExternalLink,
   Globe2,
@@ -7,10 +9,16 @@ import {
   Star,
   X,
 } from 'lucide-react'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { categoryLabel } from './PlaceCard.jsx'
 
 const DAY_NAMES = ['Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm', 'Thứ sáu', 'Thứ bảy', 'Chủ nhật']
+const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',')
 
 function safeUrl(value) {
   if (!value) return null
@@ -26,15 +34,63 @@ function timeLabel(value) {
   return value ? value.slice(0, 5) : '—'
 }
 
-export default function PlaceDetailModal({ detail, loading, error, onClose }) {
+export default function PlaceDetailModal({
+  detail,
+  loading,
+  error,
+  onClose,
+  onAddToPlan,
+  isInPlan = false,
+  activePlanName,
+}) {
+  const modalRef = useRef(null)
+
   useEffect(() => {
+    const previouslyFocused = document.activeElement
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    const closeOnEscape = (event) => event.key === 'Escape' && onClose()
-    window.addEventListener('keydown', closeOnEscape)
+    const frame = window.requestAnimationFrame(() => {
+      modalRef.current?.querySelector(FOCUSABLE_SELECTOR)?.focus()
+    })
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        onClose()
+        return
+      }
+      if (event.key !== 'Tab') return
+
+      const focusable = Array.from(
+        modalRef.current?.querySelectorAll(FOCUSABLE_SELECTOR) || [],
+      ).filter((element) => element.offsetParent !== null)
+      if (focusable.length === 0) {
+        event.preventDefault()
+        modalRef.current?.focus()
+        return
+      }
+
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (!modalRef.current?.contains(document.activeElement)) {
+        event.preventDefault()
+        const fallbackFocus = event.shiftKey ? last : first
+        fallbackFocus.focus()
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
     return () => {
+      window.cancelAnimationFrame(frame)
       document.body.style.overflow = previousOverflow
-      window.removeEventListener('keydown', closeOnEscape)
+      window.removeEventListener('keydown', handleKeyDown)
+      if (previouslyFocused instanceof HTMLElement && previouslyFocused.isConnected) {
+        previouslyFocused.focus()
+      }
     }
   }, [onClose])
 
@@ -49,7 +105,7 @@ export default function PlaceDetailModal({ detail, loading, error, onClose }) {
 
   return (
     <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
-      <section className="detail-modal" role="dialog" aria-modal="true" aria-label="Chi tiết địa điểm">
+      <section ref={modalRef} className="detail-modal" role="dialog" aria-modal="true" aria-label="Chi tiết địa điểm" tabIndex={-1}>
         <button className="icon-button modal-close" type="button" onClick={onClose} aria-label="Đóng">
           <X size={20} />
         </button>
@@ -101,7 +157,20 @@ export default function PlaceDetailModal({ detail, loading, error, onClose }) {
               </div>
 
               <div className="detail-actions">
-                {mapUrl && <a className="button button--primary" href={mapUrl} target="_blank" rel="noreferrer"><MapPin size={17} /> Chỉ đường</a>}
+                {onAddToPlan && (
+                  <button
+                    className={`button button--primary${isInPlan ? ' button--added' : ''}`}
+                    type="button"
+                    onClick={() => onAddToPlan(detail)}
+                    aria-label={isInPlan
+                      ? `Thông báo ${detail.name} đã có trong ${activePlanName || 'kế hoạch đang chọn'}`
+                      : 'Thêm địa điểm vào kế hoạch'}
+                  >
+                    {isInPlan ? <Check size={17} /> : <CalendarPlus size={17} />}
+                    {isInPlan ? 'Đã có trong kế hoạch' : 'Thêm vào kế hoạch'}
+                  </button>
+                )}
+                {mapUrl && <a className="button button--secondary" href={mapUrl} target="_blank" rel="noreferrer"><MapPin size={17} /> Chỉ đường</a>}
                 {website && <a className="button button--secondary" href={website} target="_blank" rel="noreferrer"><Globe2 size={17} /> Website</a>}
                 {detail.phone && <a className="button button--ghost" href={`tel:${detail.phone}`}><Phone size={17} /> {detail.phone}</a>}
               </div>

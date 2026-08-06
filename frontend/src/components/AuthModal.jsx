@@ -8,6 +8,7 @@ import {
   Mail,
   ShieldCheck,
   UserRound,
+  UsersRound,
   X,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -63,7 +64,7 @@ function PasswordField({ label, value, onChange, autoComplete = 'current-passwor
   )
 }
 
-export default function AuthModal({ session, initialMode = 'login', onClose, showToast }) {
+export default function AuthModal({ session, initialMode = 'login', onClose, onOpenFriends, showToast }) {
   const [mode, setMode] = useState(session ? 'account' : initialMode)
   const [form, setForm] = useState({
     email: '',
@@ -219,7 +220,8 @@ export default function AuthModal({ session, initialMode = 'login', onClose, sho
               <span className="eyebrow">Tài khoản của bạn</span>
               <h2>{session?.user?.fullName || 'LinkCute Explorer'}</h2>
               <p>{session?.user?.email}</p>
-              {session?.user?.pinCode && <div className="account-pin"><span>Mã thành viên</span><strong>{session.user.pinCode}</strong></div>}
+              {session?.user?.pinCode && <div className="account-pin"><span>Mã kết bạn</span><strong>{session.user.pinCode}</strong></div>}
+              {onOpenFriends && <button className="button button--added button--wide" type="button" onClick={onOpenFriends}><UsersRound size={17} /> Bạn bè của tôi</button>}
               <button className="button button--primary button--wide" type="button" onClick={() => goTo('changePassword')}><KeyRound size={17} /> Đổi mật khẩu</button>
               <button className="button button--ghost button--wide" type="button" onClick={logout} disabled={busy}><LogOut size={17} /> {busy ? 'Đang đăng xuất…' : 'Đăng xuất'}</button>
             </div>
