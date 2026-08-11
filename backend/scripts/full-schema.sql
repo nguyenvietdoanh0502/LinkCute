@@ -8,11 +8,25 @@ CREATE TABLE users (
     password_hash   VARCHAR(255),
     full_name       VARCHAR(100) NOT NULL,
     avatar_url      TEXT,
+    avatar_public_id VARCHAR(255),
+    gender          VARCHAR(20) NOT NULL DEFAULT 'UNSPECIFIED',
+    birth_year      INTEGER,
+    address         VARCHAR(255),
     pin_code        VARCHAR(10) UNIQUE NOT NULL,
     google_id       VARCHAR(255) UNIQUE,
     created_at      TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMP NOT NULL DEFAULT NOW(),
-    is_deleted      BOOLEAN NOT NULL DEFAULT FALSE
+    is_deleted      BOOLEAN NOT NULL DEFAULT FALSE,
+    status          VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    session_version BIGINT NOT NULL DEFAULT 0,
+    row_version     BIGINT NOT NULL DEFAULT 0,
+
+    CONSTRAINT chk_users_gender
+        CHECK (gender IN ('UNSPECIFIED', 'MALE', 'FEMALE', 'OTHER')),
+    CONSTRAINT chk_users_birth_year
+        CHECK (birth_year IS NULL OR birth_year BETWEEN 1900 AND 2100),
+    CONSTRAINT chk_users_row_version
+        CHECK (row_version >= 0)
 );
 
 CREATE INDEX idx_users_email ON users(email) WHERE is_deleted = FALSE;
@@ -237,3 +251,72 @@ CREATE TABLE messages (
 );
 
 CREATE INDEX idx_messages_group_created ON messages(group_id, created_at DESC);
+
+-- 10. Direct Chat Conversations (source of truth: Flyway V10)
+CREATE TABLE chat_conversations (
+    id              UUID PRIMARY KEY,
+    user_low_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_high_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at      TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMP NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT chk_chat_conversations_ordered_pair CHECK (user_low_id < user_high_id),
+    CONSTRAINT uq_chat_conversations_user_pair UNIQUE (user_low_id, user_high_id),
+    CONSTRAINT uq_chat_conversations_id_pair UNIQUE (id, user_low_id, user_high_id)
+);
+
+CREATE INDEX idx_chat_conversations_low_updated
+    ON chat_conversations(user_low_id, updated_at DESC);
+CREATE INDEX idx_chat_conversations_high_updated
+    ON chat_conversations(user_high_id, updated_at DESC);
+
+-- 11. Direct Chat Messages
+CREATE TABLE chat_messages (
+    id                  UUID PRIMARY KEY,
+    conversation_id     UUID NOT NULL,
+    sender_id           UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_low_id         UUID NOT NULL,
+    user_high_id        UUID NOT NULL,
+    client_message_id   UUID NOT NULL,
+    message_type        VARCHAR(20) NOT NULL DEFAULT 'TEXT',
+    content             VARCHAR(2000),
+    latitude            DOUBLE PRECISION,
+    longitude           DOUBLE PRECISION,
+    accuracy_meters     DOUBLE PRECISION,
+    created_at          TIMESTAMP NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT fk_chat_messages_conversation_pair
+        FOREIGN KEY (conversation_id, user_low_id, user_high_id)
+        REFERENCES chat_conversations(id, user_low_id, user_high_id) ON DELETE CASCADE,
+    CONSTRAINT chk_chat_messages_sender_member
+        CHECK (sender_id = user_low_id OR sender_id = user_high_id),
+    CONSTRAINT chk_chat_messages_type
+        CHECK (message_type IN ('TEXT', 'LOCATION')),
+    CONSTRAINT chk_chat_messages_payload
+        CHECK (
+            (
+                message_type = 'TEXT'
+                AND content IS NOT NULL
+                AND CHAR_LENGTH(TRIM(content)) BETWEEN 1 AND 2000
+                AND latitude IS NULL
+                AND longitude IS NULL
+                AND accuracy_meters IS NULL
+            )
+            OR
+            (
+                message_type = 'LOCATION'
+                AND content IS NULL
+                AND latitude IS NOT NULL
+                AND latitude BETWEEN -90.0 AND 90.0
+                AND longitude IS NOT NULL
+                AND longitude BETWEEN -180.0 AND 180.0
+                AND accuracy_meters IS NOT NULL
+                AND accuracy_meters BETWEEN 0.0 AND 1000000.0
+            )
+        ),
+    CONSTRAINT uq_chat_messages_client_id
+        UNIQUE (conversation_id, sender_id, client_message_id)
+);
+
+CREATE INDEX idx_chat_messages_conversation_created
+    ON chat_messages(conversation_id, created_at DESC, id DESC);

@@ -4,11 +4,16 @@ import com.hadilao.be.core.common.ApiResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.MultipartException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 @ControllerAdvice
@@ -29,7 +34,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(value = {
             MethodArgumentTypeMismatchException.class,
-            HttpMessageNotReadableException.class
+            HttpMessageNotReadableException.class,
+            HttpMediaTypeNotSupportedException.class
     })
     ResponseEntity<ApiResponse<Void>> handlingInvalidInput(Exception exception) {
         log.debug("Invalid request input: {}", exception.getMessage());
@@ -42,6 +48,16 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(errorCode.getHttpStatus()).body(apiResponse);
     }
 
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    ResponseEntity<ApiResponse<Void>> handlingAvatarTooLarge(MaxUploadSizeExceededException exception) {
+        return errorResponse(ErrorCode.AVATAR_TOO_LARGE);
+    }
+
+    @ExceptionHandler({MissingServletRequestPartException.class, MultipartException.class})
+    ResponseEntity<ApiResponse<Void>> handlingInvalidMultipart(Exception exception) {
+        return errorResponse(ErrorCode.INVALID_AVATAR);
+    }
+
     @ExceptionHandler(value = DataIntegrityViolationException.class)
     ResponseEntity<ApiResponse<Void>> handlingDataIntegrityViolationException(DataIntegrityViolationException exception) {
         log.error("DataIntegrityViolationException: ", exception);
@@ -52,6 +68,11 @@ public class GlobalExceptionHandler {
                 errorCode.getCode());
 
         return ResponseEntity.status(errorCode.getHttpStatus()).body(apiResponse);
+    }
+
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    ResponseEntity<ApiResponse<Void>> handlingOptimisticLock(OptimisticLockingFailureException exception) {
+        return errorResponse(ErrorCode.CONCURRENCY_CONFLICT);
     }
 
     @ExceptionHandler(value = AppException.class)
@@ -97,6 +118,14 @@ public class GlobalExceptionHandler {
                 errorCode.getMessage(),
                 errorCode.getCode());
 
+        return ResponseEntity.status(errorCode.getHttpStatus()).body(apiResponse);
+    }
+
+    private ResponseEntity<ApiResponse<Void>> errorResponse(ErrorCode errorCode) {
+        ApiResponse<Void> apiResponse = ApiResponse.error(
+                errorCode.getHttpStatus(),
+                errorCode.getMessage(),
+                errorCode.getCode());
         return ResponseEntity.status(errorCode.getHttpStatus()).body(apiResponse);
     }
 }

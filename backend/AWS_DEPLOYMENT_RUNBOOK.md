@@ -12,7 +12,7 @@ Tài liệu này ghi lại toàn bộ quy trình đã dùng để deploy backend
 > - Redis production: 7
 > - Reverse proxy: Nginx
 > - TLS: Let's Encrypt/Certbot
-> - Database migrations: Flyway V1 đến V6
+> - Database migrations: Flyway V1 đến V9
 > - Tổng số địa điểm trong database: 79.896
 > - Số địa điểm API hiển thị (`is_deleted = false`): 65.342
 
@@ -454,12 +454,17 @@ MAIL_PASSWORD=<smtp-app-password>
 
 JWT_SECRET=<base64-secret>
 
+CLOUDINARY_CLOUD_NAME=<cloud-name>
+CLOUDINARY_API_KEY=<api-key>
+CLOUDINARY_API_SECRET=<api-secret>
+CLOUDINARY_FOLDER=linkcute/avatars
+
 APP_CORS_ALLOWED_ORIGINS=
 SWAGGER_ENABLED=false
 JAVA_TOOL_OPTIONS=-Xms128m -Xmx512m -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError
 ```
 
-Nếu dùng Gmail, sử dụng Google App Password, không dùng password Gmail thông thường.
+Nếu dùng Gmail, sử dụng Google App Password, không dùng password Gmail thông thường. Các khóa Cloudinary chỉ được đặt ở backend; không đưa `CLOUDINARY_API_SECRET` vào biến môi trường frontend.
 
 Lưu trong Nano:
 
@@ -582,7 +587,7 @@ Không sửa V1 đã chạy, vì Flyway lưu checksum migration và sẽ báo l�
 
 Nguyên tắc cho mọi thay đổi schema tương lai:
 
-1. Không sửa V1–V6 đã chạy production.
+1. Không sửa V1–V9 đã chạy production.
 2. Tạo V7, V8... theo thứ tự.
 3. Migration phải xử lý dữ liệu cũ trước khi thêm `NOT NULL`.
 4. Backup production trước migration lớn.
@@ -624,6 +629,22 @@ server {
     server_tokens off;
 
     client_max_body_size 10m;
+
+    location /ws {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_connect_timeout 5s;
+        proxy_send_timeout 3600s;
+        proxy_read_timeout 3600s;
+    }
 
     location / {
         proxy_pass http://127.0.0.1:8080;
@@ -1293,7 +1314,8 @@ Trước mọi thao tác restore/drop database:
 - [ ] SMTP production đã được kiểm thử.
 - [ ] `docker compose ps` hiển thị PostgreSQL/Redis healthy.
 - [ ] API HTTPS trả HTTP 200.
-- [ ] Flyway history V1–V6 đều success.
+- [ ] Flyway history V1–V9 đều success.
+- [ ] Upload và xóa thử một avatar qua API thành công; asset xuất hiện đúng `CLOUDINARY_FOLDER`.
 - [ ] Có backup PostgreSQL ngoài EC2.
 - [ ] Đã kiểm tra RAM, disk và Docker disk usage.
 - [ ] Khi có frontend, `APP_CORS_ALLOWED_ORIGINS` đã được cập nhật.
@@ -1311,4 +1333,3 @@ Trước mọi thao tác restore/drop database:
 - Certbot: <https://certbot.eff.org/>
 - Let's Encrypt và port 80: <https://letsencrypt.org/docs/allow-port-80/>
 - DuckDNS: <https://www.duckdns.org/>
-

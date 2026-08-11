@@ -3,6 +3,7 @@ import {
   Clock3,
   Copy,
   Inbox,
+  MessageCircle,
   RefreshCw,
   Search,
   Send,
@@ -77,7 +78,7 @@ function EmptyFriendsState({ icon: Icon, title, description }) {
   )
 }
 
-function FriendCard({ friend, busy, onRemove }) {
+function FriendCard({ friend, busy, onMessage, onRemove }) {
   return (
     <article className="friend-card">
       <ProfileAvatar user={friend.user} />
@@ -85,16 +86,27 @@ function FriendCard({ friend, busy, onRemove }) {
         user={friend.user}
         meta={`Bạn bè từ ${formatDate(friend.friendsSince, 'gần đây')}`}
       />
-      <button
-        className="friend-icon-action friend-icon-action--danger"
-        type="button"
-        onClick={() => onRemove(friend)}
-        disabled={busy}
-        aria-label={`Hủy kết bạn với ${friend.user?.fullName || 'thành viên này'}`}
-        title="Hủy kết bạn"
-      >
-        {busy ? <span className="friend-action-loader" /> : <UserMinus size={17} aria-hidden="true" />}
-      </button>
+      <div className="friend-card__actions">
+        <button
+          className="friend-icon-action friend-icon-action--message"
+          type="button"
+          onClick={() => onMessage(friend)}
+          aria-label={`Nhắn tin cho ${friend.user?.fullName || 'thành viên này'}`}
+          title="Nhắn tin"
+        >
+          <MessageCircle size={17} aria-hidden="true" />
+        </button>
+        <button
+          className="friend-icon-action friend-icon-action--danger"
+          type="button"
+          onClick={() => onRemove(friend)}
+          disabled={busy}
+          aria-label={`Hủy kết bạn với ${friend.user?.fullName || 'thành viên này'}`}
+          title="Hủy kết bạn"
+        >
+          {busy ? <span className="friend-action-loader" /> : <UserMinus size={17} aria-hidden="true" />}
+        </button>
+      </div>
     </article>
   )
 }
@@ -165,6 +177,7 @@ function SearchResultCard({
   onAccept,
   onReject,
   onCancel,
+  onMessage,
   onRemove,
 }) {
   const status = result.relationshipStatus || 'NONE'
@@ -240,6 +253,13 @@ function SearchResultCard({
         {status === 'FRIENDS' && (
           <>
             <span className="friend-status friend-status--friends"><Check size={15} /> Đã là bạn bè</span>
+            <button
+              className="button button--primary"
+              type="button"
+              onClick={() => onMessage({ friendshipId, user: result })}
+            >
+              <MessageCircle size={16} /> Nhắn tin
+            </button>
             {friendshipId && (
               <button
                 className="button button--secondary"
@@ -258,7 +278,7 @@ function SearchResultCard({
   )
 }
 
-export default function FriendsPanel({ open, onClose, session, friendshipState, showToast }) {
+export default function FriendsPanel({ open, onClose, session, friendshipState, showToast, onOpenChat }) {
   const drawerRef = useRef(null)
   const [activeTab, setActiveTab] = useState('friends')
   const [pinCode, setPinCode] = useState('')
@@ -414,6 +434,7 @@ export default function FriendsPanel({ open, onClose, session, friendshipState, 
       `Đã hủy kết bạn với ${fullName}.`,
     )
   }
+  const handleMessage = (friend) => onOpenChat?.(friend)
 
   const handleTabKeyDown = (event, currentTab) => {
     const currentIndex = TAB_ORDER.indexOf(currentTab)
@@ -515,6 +536,7 @@ export default function FriendsPanel({ open, onClose, session, friendshipState, 
                 onAccept={handleAccept}
                 onReject={handleReject}
                 onCancel={handleCancel}
+                onMessage={handleMessage}
                 onRemove={handleRemove}
               />
             )}
@@ -580,6 +602,7 @@ export default function FriendsPanel({ open, onClose, session, friendshipState, 
                       key={friend.friendshipId}
                       friend={friend}
                       busy={busyActions.has(`remove:${friend.friendshipId}`)}
+                      onMessage={handleMessage}
                       onRemove={handleRemove}
                     />
                   ))}

@@ -1,5 +1,6 @@
 package com.hadilao.be.modules.user.dto;
 
+import com.hadilao.be.modules.user.enums.Gender;
 import lombok.Builder;
 import lombok.Data;
 import java.util.UUID;
@@ -12,4 +13,8 @@ public class UserDTO {
     private String fullName;
     private String pinCode;
     private String avatarUrl;
+    private Gender gender;
+    private Integer birthYear;
+    private Integer age;
+    private String address;
 }

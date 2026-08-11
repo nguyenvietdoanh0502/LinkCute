@@ -47,12 +47,27 @@ public interface PlaceRepository extends JpaRepository<Place, UUID>, JpaSpecific
             )
             FROM Place p
             WHERE p.isDeleted = false
-              AND (:normalizedQuery IS NULL OR p.searchText LIKE CONCAT('%', :normalizedQuery, '%'))
               AND (:category IS NULL OR p.category = :category)
               AND (:district IS NULL OR LOWER(p.district) = :district)
             ORDER BY p.name ASC, p.id ASC
             """)
-    List<PlaceMapDTO> findMapPlaces(
+    List<PlaceMapDTO> findMapPlacesWithoutSearch(
+            @Param("category") PlaceCategory category,
+            @Param("district") String district
+    );
+
+    @Query("""
+            SELECT new com.hadilao.be.modules.place.dto.PlaceMapDTO(
+                p.id, p.name, p.district, p.category, p.lat, p.lng
+            )
+            FROM Place p
+            WHERE p.isDeleted = false
+              AND p.searchText LIKE CONCAT('%', :normalizedQuery, '%')
+              AND (:category IS NULL OR p.category = :category)
+              AND (:district IS NULL OR LOWER(p.district) = :district)
+            ORDER BY p.name ASC, p.id ASC
+            """)
+    List<PlaceMapDTO> findMapPlacesBySearch(
             @Param("normalizedQuery") String normalizedQuery,
             @Param("category") PlaceCategory category,
             @Param("district") String district

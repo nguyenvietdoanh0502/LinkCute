@@ -111,8 +111,9 @@ public class PlaceService {
                 ? null
                 : district.trim().toLowerCase(Locale.ROOT);
 
-        List<PlaceMapDTO> places = placeRepository.findMapPlaces(
-                normalizedQuery, category, normalizedDistrict);
+        List<PlaceMapDTO> places = normalizedQuery == null
+                ? placeRepository.findMapPlacesWithoutSearch(category, normalizedDistrict)
+                : placeRepository.findMapPlacesBySearch(normalizedQuery, category, normalizedDistrict);
 
         if (!Boolean.TRUE.equals(openNow)) {
             return places;

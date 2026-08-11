@@ -24,6 +24,10 @@ export function getStoredSession() {
   }
 }
 
+export function getApiOrigin() {
+  return API_ORIGIN
+}
+
 export function subscribeSession(listener) {
   sessionListeners.add(listener)
   return () => sessionListeners.delete(listener)
@@ -40,6 +44,22 @@ export function saveSession(authData) {
     accessToken: authData.accessToken,
     refreshToken: authData.refreshToken,
     expiresAt: Date.now() + Number(authData.expiresIn || 0) * 1000,
+  }
+  localStorage.setItem(SESSION_KEY, JSON.stringify(session))
+  publishSession(session)
+  return session
+}
+
+export function updateSessionUser(user) {
+  const current = getStoredSession()
+  if (!current || !user) return current
+
+  const session = {
+    ...current,
+    user: {
+      ...(current.user || {}),
+      ...user,
+    },
   }
   localStorage.setItem(SESSION_KEY, JSON.stringify(session))
   publishSession(session)
@@ -90,17 +110,29 @@ async function refreshSession() {
   return refreshPromise
 }
 
+export async function ensureFreshSession(minValidityMs = 30_000) {
+  const session = getStoredSession()
+  if (!session?.accessToken) throw new ApiError('Phiên đăng nhập đã hết hạn.', 401, 'UNAUTHENTICATED')
+
+  const expiresAt = Number(session.expiresAt || 0)
+  if (!expiresAt || expiresAt - Date.now() <= minValidityMs) {
+    return refreshSession()
+  }
+  return session
+}
+
 async function request(path, options = {}, retry = true) {
   const { auth = false, body, headers, ...fetchOptions } = options
   const session = getStoredSession()
+  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData
   const response = await fetch(`${API_ORIGIN}${API_PREFIX}${path}`, {
     ...fetchOptions,
     headers: {
-      ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+      ...(body !== undefined && !isFormData ? { 'Content-Type': 'application/json' } : {}),
       ...(auth && session?.accessToken ? { Authorization: `Bearer ${session.accessToken}` } : {}),
       ...headers,
     },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: body === undefined ? undefined : isFormData ? body : JSON.stringify(body),
   })
 
   if (response.status === 401 && auth && retry && session?.refreshToken) {
@@ -170,6 +202,32 @@ export const api = {
   changePassword(body) {
     return request('/auth/change-password', { method: 'POST', body, auth: true })
   },
+  getMyProfile(options = {}) {
+    return request('/users/me', { ...options, auth: true }).then((response) => {
+      updateSessionUser(response.data)
+      return response.data
+    })
+  },
+  updateMyProfile(body) {
+    return request('/users/me/profile', { method: 'PATCH', body, auth: true }).then((response) => {
+      updateSessionUser(response.data)
+      return response.data
+    })
+  },
+  uploadMyAvatar(file) {
+    const body = new FormData()
+    body.append('file', file)
+    return request('/users/me/avatar', { method: 'POST', body, auth: true }).then((response) => {
+      updateSessionUser(response.data)
+      return response.data
+    })
+  },
+  deleteMyAvatar() {
+    return request('/users/me/avatar', { method: 'DELETE', auth: true }).then((response) => {
+      updateSessionUser(response.data)
+      return response.data
+    })
+  },
   searchFriend(pinCode, options = {}) {
     return request(`/friends/search?${queryString({ pinCode })}`, { ...options, auth: true })
       .then((response) => response.data)
@@ -209,6 +267,13 @@ export const api = {
       method: 'DELETE',
       auth: true,
     }).then((response) => response?.data ?? null)
+  },
+  getChatHistory(friendId, params = {}, options = {}) {
+    const query = queryString({ before: params.before, beforeId: params.beforeId, size: params.size })
+    return request(`/chat/friends/${encodeURIComponent(friendId)}/messages${query ? `?${query}` : ''}`, {
+      ...options,
+      auth: true,
+    }).then((response) => response.data)
   },
   getPlans(options = {}) {
     return request('/plans', { ...options, auth: true }).then((response) => response.data)

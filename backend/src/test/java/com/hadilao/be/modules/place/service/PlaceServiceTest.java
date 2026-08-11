@@ -15,6 +15,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -78,14 +81,34 @@ class PlaceServiceTest {
             PlaceMapDTO place = new PlaceMapDTO(
                     UUID.randomUUID(), "Pho Bo", "Hoan Kiem",
                     PlaceCategory.FOOD, 21.0285, 105.8542);
-            when(placeRepository.findMapPlaces("pho", PlaceCategory.FOOD, "hoan kiem"))
+            when(placeRepository.findMapPlacesBySearch("pho", PlaceCategory.FOOD, "hoan kiem"))
                     .thenReturn(List.of(place));
 
             List<PlaceMapDTO> result = placeService.getMapPlaces(
                     " Phở ", PlaceCategory.FOOD, " Hoan Kiem ", false);
 
             assertThat(result).containsExactly(place);
-            verify(placeRepository).findMapPlaces("pho", PlaceCategory.FOOD, "hoan kiem");
+            verify(placeRepository).findMapPlacesBySearch("pho", PlaceCategory.FOOD, "hoan kiem");
+            verifyNoInteractions(openingHourRepository);
+        }
+
+        @ParameterizedTest
+        @NullAndEmptySource
+        @ValueSource(strings = {"   ", "---"})
+        @DisplayName("Should use the query without a nullable search parameter when search is blank")
+        void testGetMapPlaces_WithoutSearch(String query) {
+            PlaceMapDTO place = new PlaceMapDTO(
+                    UUID.randomUUID(), "Pho Bo", "Hoan Kiem",
+                    PlaceCategory.FOOD, 21.0285, 105.8542);
+            when(placeRepository.findMapPlacesWithoutSearch(null, null))
+                    .thenReturn(List.of(place));
+
+            List<PlaceMapDTO> result = placeService.getMapPlaces(
+                    query, null, null, false);
+
+            assertThat(result).containsExactly(place);
+            verify(placeRepository).findMapPlacesWithoutSearch(null, null);
+            verify(placeRepository, never()).findMapPlacesBySearch(any(), any(), any());
             verifyNoInteractions(openingHourRepository);
         }
     }
