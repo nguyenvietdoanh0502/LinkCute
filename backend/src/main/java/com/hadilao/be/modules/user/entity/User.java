@@ -2,6 +2,7 @@ package com.hadilao.be.modules.user.entity;
 
 import com.hadilao.be.core.common.utils.PinCodeGenerator;
 import com.hadilao.be.modules.user.enums.AccountStatus;
+import com.hadilao.be.modules.user.enums.Gender;
 import jakarta.persistence.*;
 import lombok.*;
 import org.springframework.security.core.GrantedAuthority;
@@ -36,6 +37,20 @@ public class User implements UserDetails {
     @Column(name = "avatar_url")
     private String avatarUrl;
 
+    @Column(name = "avatar_public_id")
+    private String avatarPublicId;
+
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(name = "gender", nullable = false)
+    private Gender gender = Gender.UNSPECIFIED;
+
+    @Column(name = "birth_year")
+    private Integer birthYear;
+
+    @Column(name = "address", length = 255)
+    private String address;
+
     @Column(name = "pin_code", unique = true, nullable = false)
     private String pinCode;
 
@@ -58,6 +73,11 @@ public class User implements UserDetails {
     @Builder.Default
     @Column(name = "session_version", nullable = false)
     private long sessionVersion = 0L;
+
+    @Builder.Default
+    @Version
+    @Column(name = "row_version", nullable = false)
+    private long rowVersion = 0L;
 
     @PrePersist
     protected void onCreate() {

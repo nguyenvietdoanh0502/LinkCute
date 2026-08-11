@@ -8,6 +8,7 @@ import {
   Map,
   MapPinned,
   MapPin,
+  MessageCircle,
   RotateCcw,
   Search,
   SlidersHorizontal,
@@ -16,19 +17,25 @@ import {
   UsersRound,
   X,
 } from 'lucide-react'
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, getStoredSession, subscribeSession } from './api/client.js'
 import AuthModal from './components/AuthModal.jsx'
+import ChatPanel from './components/ChatPanel.jsx'
 import FriendsPanel from './components/FriendsPanel.jsx'
 import ItineraryPanel from './components/ItineraryPanel.jsx'
 import PlaceCard, { categoryLabel } from './components/PlaceCard.jsx'
 import PlaceDetailModal from './components/PlaceDetailModal.jsx'
+import ProfileAvatar from './components/ProfileAvatar.jsx'
 import SelectDropdown from './components/SelectDropdown.jsx'
+import ShareLocationDialog from './components/ShareLocationDialog.jsx'
 import Toast from './components/Toast.jsx'
 import { useDebouncedValue } from './hooks/useDebouncedValue.js'
+import { useChat } from './hooks/useChat.js'
+import { useCurrentLocation } from './hooks/useCurrentLocation.js'
 import { useFriendships } from './hooks/useFriendships.js'
 import { useItineraryPlans } from './hooks/useItineraryPlans.js'
 import { usePlanSharing } from './hooks/usePlanSharing.js'
+import { locationFromMessage } from './location/model.js'
 
 const CATEGORY_ICONS = {
   FOOD: '✦',
@@ -86,11 +93,24 @@ export default function App() {
   const [toast, setToast] = useState(null)
   const [itineraryOpen, setItineraryOpen] = useState(false)
   const [friendsOpen, setFriendsOpen] = useState(false)
+  const [chatOpen, setChatOpen] = useState(false)
+  const [chatInitialFriendId, setChatInitialFriendId] = useState(null)
+  const [locationShareOpen, setLocationShareOpen] = useState(false)
+  const [focusedLocation, setFocusedLocation] = useState(null)
   const [pendingPlace, setPendingPlace] = useState(null)
   const [sharedActivePlanId, setSharedActivePlanId] = useState(null)
   const [resumeAfterAuth, setResumeAfterAuth] = useState(null)
   const [itineraryInitialSubview, setItineraryInitialSubview] = useState('plan')
   const debouncedSearch = useDebouncedValue(search, 450)
+  const sessionIdentity = session?.user?.id
+    || session?.user?.email
+    || session?.refreshToken
+    || session?.accessToken
+    || ''
+  const sessionIdentityRef = useRef(sessionIdentity)
+  const previousSessionIdentityRef = useRef(sessionIdentity)
+  sessionIdentityRef.current = sessionIdentity
+  const locationState = useCurrentLocation(sessionIdentity)
   const {
     plans: localPlans,
     activePlan: localActivePlan,
@@ -107,6 +127,11 @@ export default function App() {
     clearPlanServerLink,
   } = useItineraryPlans(session)
   const friendshipState = useFriendships(session)
+  const chatState = useChat(session)
+  const visibleChatUnread = useMemo(() => friendshipState.friends.reduce(
+    (total, friend) => total + Number(chatState.unreadByFriend[friend.user?.id] || 0),
+    0,
+  ), [chatState.unreadByFriend, friendshipState.friends])
   const planSharingState = usePlanSharing({
     session,
     localPlans,
@@ -138,24 +163,59 @@ export default function App() {
     setToast({ message, type, id: `${Date.now()}-${Math.random()}` })
   }, [])
   const closeFriends = useCallback(() => setFriendsOpen(false), [])
+  const closeChat = useCallback(() => setChatOpen(false), [])
+  const closeLocationShare = useCallback(() => setLocationShareOpen(false), [])
+  const clearFocusedLocation = useCallback(() => setFocusedLocation(null), [])
+  const openChat = useCallback((friend) => {
+    const friendId = friend?.user?.id || friend?.id || null
+    setChatInitialFriendId(friendId)
+    setPendingPlace(null)
+    setItineraryOpen(false)
+    setFriendsOpen(false)
+    setLocationShareOpen(false)
+    setChatOpen(true)
+  }, [])
 
   useEffect(() => subscribeSession(setSession), [])
 
   useEffect(() => {
-    if (!session) {
-      closeFriends()
-      setSharedActivePlanId(null)
-    }
-  }, [closeFriends, session])
+    if (previousSessionIdentityRef.current === sessionIdentity) return
+    previousSessionIdentityRef.current = sessionIdentity
+    closeFriends()
+    closeChat()
+    setChatInitialFriendId(null)
+    setLocationShareOpen(false)
+    setFocusedLocation(null)
+    setSharedActivePlanId(null)
+  }, [closeChat, closeFriends, sessionIdentity])
 
   useEffect(() => {
-    if (!session || resumeAfterAuth !== 'plan-people') return
-    setAuthMode(null)
-    setResumeAfterAuth(null)
-    setItineraryInitialSubview('people')
-    setFriendsOpen(false)
-    setItineraryOpen(true)
-  }, [resumeAfterAuth, session])
+    if (!session || !resumeAfterAuth) return
+    if (resumeAfterAuth === 'plan-people') {
+      setAuthMode(null)
+      setResumeAfterAuth(null)
+      setItineraryInitialSubview('people')
+      setFriendsOpen(false)
+      setChatOpen(false)
+      setItineraryOpen(true)
+      return
+    }
+    if (resumeAfterAuth === 'share-location') {
+      const requestedIdentity = sessionIdentity
+      setAuthMode(null)
+      setResumeAfterAuth(null)
+      locationState.requestLocation()
+        .then((location) => {
+          if (!location || !requestedIdentity || sessionIdentityRef.current !== requestedIdentity) return
+          setLocationShareOpen(true)
+        })
+        .catch((locationFailure) => {
+          if (locationFailure?.name === 'AbortError') return
+          if (sessionIdentityRef.current !== requestedIdentity) return
+          showToast(locationFailure.message, 'error')
+        })
+    }
+  }, [locationState.requestLocation, resumeAfterAuth, session, sessionIdentity, showToast])
 
   useEffect(() => {
     if (!sharedActivePlanId || planSharingState.loading) return
@@ -259,6 +319,79 @@ export default function App() {
     setDetailLoading(false)
   }, [])
 
+  const handleLocateSelf = useCallback(() => {
+    locationState.clearError()
+    return locationState.requestLocation()
+      .catch((locationFailure) => {
+        if (locationFailure?.name !== 'AbortError') {
+          showToast(locationFailure.message, 'error')
+        }
+        throw locationFailure
+      })
+  }, [locationState.clearError, locationState.requestLocation, showToast])
+
+  const handleOpenLocationShare = useCallback(async () => {
+    if (!session) {
+      setResumeAfterAuth('share-location')
+      setAuthMode('login')
+      showToast('Đăng nhập để chia sẻ vị trí với bạn bè.')
+      return null
+    }
+
+    const requestedIdentity = sessionIdentity
+    try {
+      const location = await locationState.requestLocation()
+      if (!requestedIdentity || sessionIdentityRef.current !== requestedIdentity) return null
+      setLocationShareOpen(true)
+      return location
+    } catch (locationFailure) {
+      if (locationFailure?.name === 'AbortError') return null
+      if (sessionIdentityRef.current !== requestedIdentity) return null
+      showToast(locationFailure.message, 'error')
+      return null
+    }
+  }, [locationState.requestLocation, session, sessionIdentity, showToast])
+
+  const handleShareLocation = useCallback((friend, location) => {
+    const friendId = friend?.user?.id
+    const clientMessageId = chatState.sendLocation(friendId, location)
+    showToast(`Vị trí đang được gửi cho ${friend?.user?.fullName || 'bạn bè'}.`)
+    return clientMessageId
+  }, [chatState, showToast])
+
+  const handleOpenSharedLocation = useCallback((message, friend) => {
+    const location = locationFromMessage(message)
+    if (!location) {
+      showToast('Tin nhắn này không chứa tọa độ hợp lệ.', 'error')
+      return
+    }
+
+    const ownMessage = message.senderId === session?.user?.id
+    const friendName = friend?.user?.fullName || 'bạn bè'
+    setFocusedLocation({
+      ...location,
+      focusKey: message.id || `${message.senderId}:${message.clientMessageId}`,
+      label: ownMessage ? 'Vị trí bạn đã chia sẻ' : `Vị trí ${friendName} chia sẻ`,
+      sharedAt: message.createdAt,
+    })
+    setLocationShareOpen(false)
+    setItineraryOpen(false)
+    setFriendsOpen(false)
+    closeChat()
+    closeDetail()
+    setViewMode('map')
+    window.requestAnimationFrame(() => {
+      document.querySelector('#discover')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }, [closeChat, closeDetail, session?.user?.id, showToast])
+
+  const openFriendsFromLocationShare = useCallback(() => {
+    setLocationShareOpen(false)
+    setItineraryOpen(false)
+    setChatOpen(false)
+    setFriendsOpen(true)
+  }, [])
+
   const closeItinerary = useCallback(() => {
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur()
@@ -356,6 +489,7 @@ export default function App() {
 
   const openFriendsFromPlan = useCallback(() => {
     setItineraryOpen(false)
+    setChatOpen(false)
     setItineraryInitialSubview('plan')
     setFriendsOpen(true)
   }, [])
@@ -392,6 +526,7 @@ export default function App() {
             onClick={() => {
               setPendingPlace(null)
               setFriendsOpen(false)
+              setChatOpen(false)
               setItineraryInitialSubview('plan')
               setItineraryOpen(true)
             }}
@@ -407,11 +542,27 @@ export default function App() {
           </button>
           {session && (
             <button
+              className="chat-launcher"
+              type="button"
+              onClick={() => openChat(null)}
+              aria-haspopup="dialog"
+              aria-label={`Mở tin nhắn${visibleChatUnread ? `, ${visibleChatUnread} tin nhắn mới` : ''}`}
+            >
+              <MessageCircle size={17} aria-hidden="true" />
+              <span className="chat-launcher__label">Tin nhắn</span>
+              {visibleChatUnread > 0 && (
+                <span className="chat-launcher__badge">{visibleChatUnread > 99 ? '99+' : visibleChatUnread}</span>
+              )}
+            </button>
+          )}
+          {session && (
+            <button
               className="friends-launcher"
               type="button"
               onClick={() => {
                 setPendingPlace(null)
                 setItineraryOpen(false)
+                setChatOpen(false)
                 setFriendsOpen(true)
               }}
               aria-haspopup="dialog"
@@ -429,7 +580,7 @@ export default function App() {
           <button className="account-button" type="button" onClick={() => setAuthMode(session ? 'account' : 'login')}>
             {session ? (
               <>
-                <span className="account-button__avatar">{session.user?.fullName?.charAt(0)?.toUpperCase() || 'L'}</span>
+                <ProfileAvatar className="account-button__avatar" user={session.user} alt="" />
                 <span>{session.user?.fullName?.split(' ').slice(-1)[0] || 'Tài khoản'}</span>
               </>
             ) : <><UserRound size={17} /><span>Đăng nhập</span></>}
@@ -579,6 +730,13 @@ export default function App() {
                 loading={mapLoading}
                 error={mapPlacesError}
                 onSelect={selectPlace}
+                userLocation={locationState.position}
+                locationStatus={locationState.status}
+                locationError={locationState.error}
+                onLocate={handleLocateSelf}
+                onShareLocation={handleOpenLocationShare}
+                focusedLocation={focusedLocation}
+                onClearFocusedLocation={clearFocusedLocation}
                 filters={{
                   search,
                   category,
@@ -660,6 +818,29 @@ export default function App() {
         session={session}
         friendshipState={friendshipState}
         showToast={showToast}
+        onOpenChat={openChat}
+      />
+      <ChatPanel
+        open={chatOpen}
+        onClose={closeChat}
+        friends={friendshipState.friends}
+        initialFriendId={chatInitialFriendId}
+        currentUserId={session?.user?.id}
+        chatState={chatState}
+        showToast={showToast}
+        onOpenLocation={handleOpenSharedLocation}
+      />
+      <ShareLocationDialog
+        open={locationShareOpen}
+        onClose={closeLocationShare}
+        friends={friendshipState.friends}
+        friendsLoading={friendshipState.loading}
+        friendsError={friendshipState.error}
+        location={locationState.position}
+        connectionStatus={chatState.connectionStatus}
+        onShare={handleShareLocation}
+        onOpenFriends={openFriendsFromLocationShare}
+        onRefreshFriends={() => friendshipState.refresh().catch(() => {})}
       />
       {(selectedPlace || detailLoading || detailError) && (
         <PlaceDetailModal
@@ -683,6 +864,7 @@ export default function App() {
           onOpenFriends={() => {
             setAuthMode(null)
             setItineraryOpen(false)
+            setChatOpen(false)
             setFriendsOpen(true)
           }}
           showToast={showToast}

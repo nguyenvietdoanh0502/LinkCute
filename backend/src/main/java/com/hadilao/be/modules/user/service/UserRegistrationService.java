@@ -12,8 +12,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 
 @Service
@@ -34,8 +32,7 @@ public class UserRegistrationService {
             // If PENDING, update password and full name, keep existing PIN
             existingUser.setPassword(command.getHashedPassword());
             existingUser.setFullName(command.getFullName());
-            existingUser.setAvatarUrl("https://ui-avatars.com/api/?name=" + 
-                    URLEncoder.encode(command.getFullName(), StandardCharsets.UTF_8) + "&background=random");
+            existingUser.setAvatarUrl(null);
             User savedUser = userRepository.save(existingUser);
             return mapToDTO(savedUser);
         }
@@ -51,16 +48,12 @@ public class UserRegistrationService {
             throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION); // Could be a custom "SERVER_ERROR" for PIN collision
         }
 
-        String defaultAvatar = "https://ui-avatars.com/api/?name=" + 
-                URLEncoder.encode(command.getFullName(), StandardCharsets.UTF_8) + "&background=random";
-
         User user = User.builder()
                 .email(command.getEmail())
                 .password(command.getHashedPassword())
                 .fullName(command.getFullName())
                 .pinCode(pinCode)
                 .status(AccountStatus.PENDING)
-                .avatarUrl(defaultAvatar)
                 .build();
 
         User savedUser = userRepository.save(user);
@@ -68,13 +61,7 @@ public class UserRegistrationService {
     }
 
     public UserDTO mapToDTO(User savedUser) {
-        return UserDTO.builder()
-                .id(savedUser.getId())
-                .email(savedUser.getEmail())
-                .fullName(savedUser.getFullName())
-                .pinCode(savedUser.getPinCode())
-                .avatarUrl(savedUser.getAvatarUrl())
-                .build();
+        return UserMapper.toDTO(savedUser);
     }
 
     @Transactional

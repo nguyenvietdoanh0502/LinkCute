@@ -19,6 +19,17 @@ export default defineConfig({
           })
         },
       },
+      '/ws': {
+        target: 'https://linkcute.duckdns.org',
+        changeOrigin: true,
+        secure: true,
+        ws: true,
+        configure(proxy) {
+          proxy.on('proxyReqWs', (proxyRequest) => {
+            proxyRequest.removeHeader('origin')
+          })
+        },
+      },
     },
   },
 })

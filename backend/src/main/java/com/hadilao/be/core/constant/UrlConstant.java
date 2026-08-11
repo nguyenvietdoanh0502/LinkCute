@@ -28,6 +28,12 @@ public class UrlConstant {
         public static final String IMPORT_OSM = "/places/import/osm";
     }
 
+    public static class User {
+        public static final String ME = "/users/me";
+        public static final String PROFILE = "/users/me/profile";
+        public static final String AVATAR = "/users/me/avatar";
+    }
+
     public static class Friend {
         public static final String BASE = "/friends";
         public static final String SEARCH = "/friends/search";
@@ -37,6 +43,10 @@ public class UrlConstant {
         public static final String ACCEPT_REQUEST = "/friends/requests/{id}/accept";
         public static final String REQUEST_BY_ID = "/friends/requests/{id}";
         public static final String FRIENDSHIP_BY_ID = "/friends/{friendshipId}";
+    }
+
+    public static class Chat {
+        public static final String FRIEND_MESSAGES = "/chat/friends/{friendId}/messages";
     }
 
     public static class Plan {
