@@ -1,4 +1,4 @@
-import { ArrowUpRight, MapPin, Star } from 'lucide-react'
+import { ArrowUpRight, CalendarPlus, Check, MapPin, Star } from 'lucide-react'
 import { useState } from 'react'
 
 const CATEGORY_LABELS = {
@@ -23,24 +23,26 @@ export function categoryLabel(category) {
   return CATEGORY_LABELS[category] || category || 'Khám phá'
 }
 
-export default function PlaceCard({ place, onSelect }) {
+export default function PlaceCard({
+  place,
+  onSelect,
+  onAddToPlan,
+  isInPlan = false,
+}) {
   const [imageFailed, setImageFailed] = useState(false)
   const hasImage = place.photoUrl && !imageFailed
 
   const open = () => onSelect(place.id)
 
   return (
-    <article
-      className="place-card"
-      tabIndex="0"
-      role="button"
-      onClick={open}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') open()
-      }}
-      aria-label={`Xem chi tiết ${place.name}`}
-    >
+    <article className="place-card">
       <div className={`place-card__visual category-${place.category?.toLowerCase() || 'other'}`}>
+        <button
+          className="place-card__visual-button"
+          type="button"
+          onClick={open}
+          aria-label={`Xem chi tiết ${place.name}`}
+        />
         {hasImage ? (
           <img src={place.photoUrl} alt="" loading="lazy" onError={() => setImageFailed(true)} />
         ) : (
@@ -71,6 +73,25 @@ export default function PlaceCard({ place, onSelect }) {
           <span>{place.district || 'Hà Nội'}</span>
           <span className="dot" />
           <span>{place.userRatingsTotal ? `${place.userRatingsTotal.toLocaleString('vi-VN')} đánh giá` : 'Điểm đến mới'}</span>
+        </div>
+
+        <div className="place-card__actions">
+          <button className="place-card__details" type="button" onClick={open}>
+            Xem chi tiết <ArrowUpRight size={15} aria-hidden="true" />
+          </button>
+          {onAddToPlan && (
+            <button
+              className={`place-card__plan${isInPlan ? ' is-added' : ''}`}
+              type="button"
+              onClick={() => onAddToPlan(place)}
+              aria-label={isInPlan
+                ? `Thông báo ${place.name} đã có trong kế hoạch`
+                : `Thêm ${place.name} vào kế hoạch`}
+            >
+              {isInPlan ? <Check size={15} aria-hidden="true" /> : <CalendarPlus size={15} aria-hidden="true" />}
+              {isInPlan ? 'Đã thêm' : 'Thêm vào kế hoạch'}
+            </button>
+          )}
         </div>
       </div>
     </article>

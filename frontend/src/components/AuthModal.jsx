@@ -1,17 +1,33 @@
 import {
   ArrowLeft,
+  CalendarDays,
+  Camera,
   Eye,
   EyeOff,
   KeyRound,
   LockKeyhole,
   LogOut,
   Mail,
+  MapPin,
+  Pencil,
+  Save,
   ShieldCheck,
+  Trash2,
   UserRound,
+  UsersRound,
   X,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api, clearSession } from '../api/client.js'
+import {
+  GENDER_OPTIONS,
+  avatarFileError,
+  buildProfilePayload,
+  calculateAge,
+  genderLabel,
+  profileFormFromUser,
+} from '../profile/model.js'
+import ProfileAvatar from './ProfileAvatar.jsx'
 
 const TITLES = {
   login: ['Chào bạn quay lại', 'Đăng nhập để tiếp tục hành trình của riêng bạn.'],
@@ -21,6 +37,7 @@ const TITLES = {
   verifyReset: ['Nhập mã xác thực', 'Mã OTP giúp chúng tôi biết đây thực sự là bạn.'],
   reset: ['Đặt mật khẩu mới', 'Chọn một mật khẩu mạnh và dễ nhớ với riêng bạn.'],
   changePassword: ['Đổi mật khẩu', 'Cập nhật mật khẩu cho tài khoản hiện tại.'],
+  editProfile: ['Chỉnh sửa hồ sơ', 'Cập nhật thông tin giúp bạn bè nhận ra bạn dễ dàng hơn.'],
 }
 
 function TextField({ icon: Icon, label, ...props }) {
@@ -63,8 +80,34 @@ function PasswordField({ label, value, onChange, autoComplete = 'current-passwor
   )
 }
 
-export default function AuthModal({ session, initialMode = 'login', onClose, showToast }) {
-  const [mode, setMode] = useState(session ? 'account' : initialMode)
+function SelectField({ icon: Icon, label, children, ...props }) {
+  return (
+    <label className="form-field">
+      <span>{label}</span>
+      <div className="form-field__control">
+        <Icon size={18} aria-hidden="true" />
+        <select {...props}>{children}</select>
+      </div>
+    </label>
+  )
+}
+
+function TextAreaField({ icon: Icon, label, ...props }) {
+  return (
+    <label className="form-field">
+      <span>{label}</span>
+      <div className="form-field__control form-field__control--textarea">
+        <Icon size={18} aria-hidden="true" />
+        <textarea {...props} />
+      </div>
+    </label>
+  )
+}
+
+export default function AuthModal({ session, initialMode = 'login', onClose, onOpenFriends, showToast }) {
+  const [mode, setMode] = useState(
+    session && ['account', 'editProfile', 'changePassword'].includes(initialMode) ? initialMode : session ? 'account' : initialMode,
+  )
   const [form, setForm] = useState({
     email: '',
     fullName: '',
@@ -78,6 +121,9 @@ export default function AuthModal({ session, initialMode = 'login', onClose, sho
   const [resetToken, setResetToken] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [profileLoading, setProfileLoading] = useState(Boolean(session))
+  const [profileForm, setProfileForm] = useState(() => profileFormFromUser(session?.user))
+  const [avatarPreview, setAvatarPreview] = useState('')
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow
@@ -90,8 +136,46 @@ export default function AuthModal({ session, initialMode = 'login', onClose, sho
     }
   }, [onClose])
 
+  useEffect(() => {
+    if (!session?.user?.id) {
+      setProfileLoading(false)
+      return undefined
+    }
+
+    const controller = new AbortController()
+    let active = true
+    setProfileLoading(true)
+    api.getMyProfile({ signal: controller.signal })
+      .catch((requestError) => {
+        if (active && requestError?.name !== 'AbortError') {
+          setError(requestError.message || 'Không thể tải hồ sơ mới nhất.')
+        }
+      })
+      .finally(() => {
+        if (active) setProfileLoading(false)
+      })
+
+    return () => {
+      active = false
+      controller.abort()
+    }
+  }, [session?.user?.id])
+
+  useEffect(() => {
+    if (mode !== 'editProfile') setProfileForm(profileFormFromUser(session?.user))
+  }, [mode, session?.user])
+
+  useEffect(() => () => {
+    if (avatarPreview) URL.revokeObjectURL(avatarPreview)
+  }, [avatarPreview])
+
   const update = (field) => (event) => {
     setForm((current) => ({ ...current, [field]: event.target.value }))
+    setError('')
+  }
+
+  const updateProfile = (field) => (event) => {
+    setProfileForm((current) => ({ ...current, [field]: event.target.value }))
     setError('')
   }
 
@@ -189,6 +273,44 @@ export default function AuthModal({ session, initialMode = 'login', onClose, sho
     }
   }
 
+  const handleProfileSubmit = (event) => {
+    event.preventDefault()
+    run(async () => {
+      const payload = buildProfilePayload(profileForm)
+      await api.updateMyProfile(payload)
+      showToast('Hồ sơ của bạn đã được cập nhật.')
+      goTo('account')
+    })
+  }
+
+  const handleAvatarChange = (event) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    const validationError = avatarFileError(file)
+    if (validationError) {
+      setError(validationError)
+      return
+    }
+
+    setAvatarPreview(URL.createObjectURL(file))
+    run(async () => {
+      try {
+        await api.uploadMyAvatar(file)
+        showToast('Ảnh đại diện đã được cập nhật.')
+      } finally {
+        setAvatarPreview('')
+      }
+    })
+  }
+
+  const removeAvatar = () => {
+    if (!session?.user?.avatarUrl || !window.confirm('Xóa ảnh đại diện hiện tại?')) return
+    run(async () => {
+      await api.deleteMyAvatar()
+      showToast('Ảnh đại diện đã được xóa.')
+    })
+  }
+
   const logout = () => run(async () => {
     await api.logout()
     showToast('Bạn đã đăng xuất.')
@@ -198,6 +320,8 @@ export default function AuthModal({ session, initialMode = 'login', onClose, sho
   const otpMode = mode === 'verifyRegister' || mode === 'verifyReset'
   const showBack = !['login', 'register', 'account'].includes(mode)
   const backMode = mode === 'verifyRegister' ? 'register' : mode === 'forgot' ? 'login' : mode === 'verifyReset' ? 'forgot' : mode === 'reset' ? 'verifyReset' : 'account'
+  const profileAge = session?.user?.age ?? calculateAge(session?.user?.birthYear)
+  const editingAge = calculateAge(profileForm.birthYear)
 
   return (
     <div className="modal-backdrop auth-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
@@ -215,14 +339,99 @@ export default function AuthModal({ session, initialMode = 'login', onClose, sho
 
           {mode === 'account' ? (
             <div className="account-panel">
-              <div className="account-avatar">{session?.user?.fullName?.charAt(0)?.toUpperCase() || session?.user?.email?.charAt(0)?.toUpperCase() || 'L'}</div>
+              <ProfileAvatar className="account-avatar" user={session?.user} />
               <span className="eyebrow">Tài khoản của bạn</span>
               <h2>{session?.user?.fullName || 'LinkCute Explorer'}</h2>
               <p>{session?.user?.email}</p>
-              {session?.user?.pinCode && <div className="account-pin"><span>Mã thành viên</span><strong>{session.user.pinCode}</strong></div>}
-              <button className="button button--primary button--wide" type="button" onClick={() => goTo('changePassword')}><KeyRound size={17} /> Đổi mật khẩu</button>
+              {profileLoading && <span className="account-loading">Đang đồng bộ hồ sơ…</span>}
+              {session?.user?.pinCode && <div className="account-pin"><span>Mã kết bạn</span><strong>{session.user.pinCode}</strong></div>}
+              <div className="account-details">
+                <div><span>Giới tính</span><strong>{genderLabel(session?.user?.gender)}</strong></div>
+                <div><span>Năm sinh</span><strong>{session?.user?.birthYear || 'Chưa cập nhật'}{profileAge !== null ? ` · ${profileAge} tuổi` : ''}</strong></div>
+                <div><span>Địa chỉ</span><strong>{session?.user?.address || 'Chưa cập nhật'}</strong></div>
+              </div>
+              {error && <div className="form-error account-error" role="alert">{error}</div>}
+              <button className="button button--primary button--wide" type="button" onClick={() => goTo('editProfile')} disabled={profileLoading}><Pencil size={17} /> Chỉnh sửa hồ sơ</button>
+              {onOpenFriends && <button className="button button--added button--wide" type="button" onClick={onOpenFriends}><UsersRound size={17} /> Bạn bè của tôi</button>}
+              <button className="button button--ghost button--wide" type="button" onClick={() => goTo('changePassword')}><KeyRound size={17} /> Đổi mật khẩu</button>
               <button className="button button--ghost button--wide" type="button" onClick={logout} disabled={busy}><LogOut size={17} /> {busy ? 'Đang đăng xuất…' : 'Đăng xuất'}</button>
             </div>
+          ) : mode === 'editProfile' ? (
+            <>
+              <div className="auth-heading profile-heading">
+                <span className="eyebrow">LinkCute member</span>
+                <h2>{TITLES.editProfile[0]}</h2>
+                <p>{TITLES.editProfile[1]}</p>
+              </div>
+
+              <form className="auth-form profile-form" onSubmit={handleProfileSubmit}>
+                <div className="profile-avatar-editor">
+                  <ProfileAvatar
+                    className="account-avatar profile-avatar-preview"
+                    user={session?.user}
+                    src={avatarPreview || session?.user?.avatarUrl}
+                  />
+                  <div className="profile-avatar-editor__actions">
+                    <label className={`button button--ghost profile-avatar-picker${busy ? ' is-disabled' : ''}`}>
+                      <Camera size={16} /> {busy && avatarPreview ? 'Đang tải ảnh…' : 'Chọn ảnh'}
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        onChange={handleAvatarChange}
+                        disabled={busy}
+                      />
+                    </label>
+                    {session?.user?.avatarUrl && (
+                      <button className="profile-avatar-remove" type="button" onClick={removeAvatar} disabled={busy}>
+                        <Trash2 size={15} /> Xóa ảnh
+                      </button>
+                    )}
+                    <small>JPEG, PNG hoặc WebP · tối đa 5 MiB</small>
+                  </div>
+                </div>
+
+                <TextField
+                  icon={UserRound}
+                  label="Họ và tên"
+                  value={profileForm.fullName}
+                  onChange={updateProfile('fullName')}
+                  autoComplete="name"
+                  minLength={2}
+                  maxLength={100}
+                  required
+                />
+                <SelectField icon={UserRound} label="Giới tính" value={profileForm.gender} onChange={updateProfile('gender')}>
+                  {GENDER_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </SelectField>
+                <TextField
+                  icon={CalendarDays}
+                  label="Năm sinh"
+                  type="number"
+                  value={profileForm.birthYear}
+                  onChange={updateProfile('birthYear')}
+                  min={1900}
+                  max={new Date().getFullYear()}
+                  inputMode="numeric"
+                  placeholder="2000"
+                />
+                {editingAge !== null && <div className="profile-age-hint">Tuổi ước tính: <strong>{editingAge}</strong></div>}
+                <TextAreaField
+                  icon={MapPin}
+                  label="Địa chỉ"
+                  value={profileForm.address}
+                  onChange={updateProfile('address')}
+                  autoComplete="street-address"
+                  maxLength={255}
+                  rows={3}
+                  placeholder="Quận, thành phố hoặc địa chỉ của bạn"
+                />
+
+                {error && <div className="form-error" role="alert">{error}</div>}
+                <button className="button button--primary button--wide auth-submit" type="submit" disabled={busy}>
+                  {busy ? <><span className="button-loader" /> Đang lưu…</> : <><Save size={17} /> Lưu thay đổi</>}
+                </button>
+              </form>
+            </>
           ) : (
             <>
               <div className="auth-heading">

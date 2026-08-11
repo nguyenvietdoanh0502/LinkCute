@@ -1,7 +1,24 @@
 import maplibregl from 'maplibre-gl'
-import { Cloud, KeyRound, MapPinned } from 'lucide-react'
+import {
+  Clock3,
+  Cloud,
+  KeyRound,
+  LocateFixed,
+  MapPin,
+  MapPinned,
+  Search,
+  Share2,
+  Tags,
+  X,
+} from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  MAX_MERCATOR_LATITUDE,
+  locationAccuracyLabel,
+  normalizeLocation,
+} from '../location/model.js'
 import { categoryLabel } from './PlaceCard.jsx'
+import SelectDropdown from './SelectDropdown.jsx'
 
 const HANOI_CENTER = [105.8342, 21.0278]
 const DEFAULT_REGION = 'ap-southeast-1'
@@ -55,6 +72,45 @@ function createPopupContent(place, onSelect) {
   action.addEventListener('click', () => onSelect(place.id))
 
   content.append(category, name, address, action)
+  return content
+}
+
+function mapCoordinates(location) {
+  const latitude = Math.max(
+    -MAX_MERCATOR_LATITUDE,
+    Math.min(MAX_MERCATOR_LATITUDE, location.latitude),
+  )
+  return [location.longitude, latitude]
+}
+
+function createLocationMarkerElement(kind) {
+  const marker = document.createElement('div')
+  marker.className = `map-location-marker map-location-marker--${kind}`
+  const pulse = document.createElement('span')
+  const dot = document.createElement('i')
+  marker.append(pulse, dot)
+  return marker
+}
+
+function createLocationPopupContent(location, { label, kind, sharedAt }) {
+  const content = document.createElement('div')
+  content.className = 'map-popup map-location-popup'
+
+  const category = document.createElement('span')
+  category.className = 'map-popup__category'
+  category.textContent = kind === 'self' ? 'Vị trí của tôi' : 'Vị trí được chia sẻ'
+
+  const title = document.createElement('strong')
+  title.textContent = label || (kind === 'self' ? 'Bạn đang ở đây' : 'Vị trí bạn bè')
+
+  const description = document.createElement('p')
+  const sharedDate = sharedAt ? new Date(sharedAt) : null
+  const timeLabel = sharedDate && !Number.isNaN(sharedDate.getTime())
+    ? ` · Gửi lúc ${sharedDate.toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}`
+    : ''
+  description.textContent = `${location.latitude.toFixed(6)}, ${location.longitude.toFixed(6)} · ${locationAccuracyLabel(location)}${timeLabel}`
+
+  content.append(category, title, description)
   return content
 }
 
@@ -308,10 +364,96 @@ function addPlaceLayers(map) {
   })
 }
 
-export default function AwsPlacesMap({ places = [], loading = false, error = '', onSelect }) {
+function FullscreenMapFilters({ filters }) {
+  if (!filters) return null
+
+  return (
+    <div className="map-fullscreen-filters" aria-label="Bộ lọc bản đồ toàn màn hình">
+      <label className="map-overlay-field map-overlay-search">
+        <Search size={17} />
+        <input
+          value={filters.search}
+          onChange={(event) => filters.onSearchChange(event.target.value)}
+          placeholder="Tên hoặc địa chỉ…"
+          aria-label="Tìm kiếm trên bản đồ"
+        />
+        {filters.search && (
+          <button type="button" onClick={() => filters.onSearchChange('')} aria-label="Xóa tìm kiếm">
+            <X size={15} />
+          </button>
+        )}
+      </label>
+
+      <SelectDropdown
+        className="map-overlay-dropdown"
+        value={filters.district}
+        onChange={filters.onDistrictChange}
+        icon={<MapPin size={17} />}
+        ariaLabel="Chọn khu vực trên bản đồ"
+        searchable
+        searchPlaceholder="Tìm khu vực…"
+        options={[
+          { value: '', label: 'Mọi khu vực' },
+          ...filters.districts.map((item) => ({
+            value: item.district,
+            label: item.district,
+            count: item.count,
+          })),
+        ]}
+      />
+
+      <SelectDropdown
+        className="map-overlay-dropdown"
+        value={filters.category}
+        onChange={filters.onCategoryChange}
+        icon={<Tags size={17} />}
+        ariaLabel="Chọn danh mục trên bản đồ"
+        options={[
+          { value: '', label: 'Mọi category' },
+          ...filters.categories.map((item) => ({
+            value: item.category,
+            label: item.name || categoryLabel(item.category),
+            count: item.count,
+          })),
+        ]}
+      />
+
+      <label className="map-overlay-toggle">
+        <input
+          type="checkbox"
+          checked={filters.openNow}
+          onChange={(event) => filters.onOpenNowChange(event.target.checked)}
+        />
+        <span className="toggle-filter__track"><span /></span>
+        <Clock3 size={16} />
+        <span>Đang mở cửa</span>
+      </label>
+    </div>
+  )
+}
+
+export default function AwsPlacesMap({
+  places = [],
+  loading = false,
+  error = '',
+  onSelect,
+  filters = null,
+  userLocation = null,
+  locationStatus = 'idle',
+  locationError = '',
+  onLocate,
+  onShareLocation,
+  focusedLocation = null,
+  onClearFocusedLocation,
+}) {
+  const panelRef = useRef(null)
   const containerRef = useRef(null)
   const mapRef = useRef(null)
   const popupRef = useRef(null)
+  const userMarkerRef = useRef(null)
+  const focusedMarkerRef = useRef(null)
+  const locationCameraModeRef = useRef('places')
+  const lastFilterSignatureRef = useRef('')
   const placesByIdRef = useRef(new Map())
   const [mapReady, setMapReady] = useState(false)
   const [mapError, setMapError] = useState('')
@@ -322,13 +464,26 @@ export default function AwsPlacesMap({ places = [], loading = false, error = '',
   const colorScheme = import.meta.env.VITE_AWS_MAP_COLOR_SCHEME?.trim() || 'Light'
 
   const validPlaces = useMemo(() => places.filter(isValidCoordinate), [places])
+  const validUserLocation = useMemo(() => normalizeLocation(userLocation), [userLocation])
+  const validFocusedLocation = useMemo(() => normalizeLocation(focusedLocation), [focusedLocation])
+  const filterSignature = `${filters?.search || ''}|${filters?.category || ''}|${filters?.district || ''}|${Boolean(filters?.openNow)}`
+
+  useEffect(() => {
+    if (!lastFilterSignatureRef.current) {
+      lastFilterSignatureRef.current = filterSignature
+      return
+    }
+    if (lastFilterSignatureRef.current === filterSignature) return
+    lastFilterSignatureRef.current = filterSignature
+    if (locationCameraModeRef.current === 'self') locationCameraModeRef.current = 'places'
+  }, [filterSignature])
 
   useEffect(() => {
     placesByIdRef.current = new Map(validPlaces.map((place) => [String(place.id), place]))
   }, [validPlaces])
 
   useEffect(() => {
-    if (!apiKey || !containerRef.current) return undefined
+    if (!apiKey || !panelRef.current || !containerRef.current) return undefined
 
     setMapError('')
     setMapReady(false)
@@ -345,9 +500,17 @@ export default function AwsPlacesMap({ places = [], loading = false, error = '',
       minZoom: 5,
       maxZoom: 19,
       attributionControl: false,
+      locale: {
+        'FullscreenControl.Enter': 'Mở bản đồ toàn màn hình',
+        'FullscreenControl.Exit': 'Thoát toàn màn hình',
+      },
     })
 
     mapRef.current = map
+    map.addControl(new maplibregl.FullscreenControl({
+      container: panelRef.current,
+      pseudo: true,
+    }), 'top-right')
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right')
     map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right')
 
@@ -421,6 +584,11 @@ export default function AwsPlacesMap({ places = [], loading = false, error = '',
       window.clearTimeout(loadTimeout)
       popupRef.current?.remove()
       popupRef.current = null
+      userMarkerRef.current?.remove()
+      userMarkerRef.current = null
+      focusedMarkerRef.current?.remove()
+      focusedMarkerRef.current = null
+      locationCameraModeRef.current = 'places'
       map.off('load', onLoad)
       map.off('error', onError)
       map.off('click', CLUSTER_LAYER_ID, onClusterClick)
@@ -436,10 +604,61 @@ export default function AwsPlacesMap({ places = [], loading = false, error = '',
 
   useEffect(() => {
     const map = mapRef.current
+    if (!map || !mapReady) return
+
+    userMarkerRef.current?.remove()
+    userMarkerRef.current = null
+    if (!validUserLocation) return
+
+    userMarkerRef.current = new maplibregl.Marker({
+      element: createLocationMarkerElement('self'),
+      anchor: 'center',
+    })
+      .setLngLat(mapCoordinates(validUserLocation))
+      .setPopup(new maplibregl.Popup({ offset: 20, closeButton: true, maxWidth: '310px' })
+        .setDOMContent(createLocationPopupContent(validUserLocation, {
+          kind: 'self',
+          label: 'Bạn đang ở đây',
+        })))
+      .addTo(map)
+  }, [mapReady, validUserLocation])
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !mapReady) return
+
+    focusedMarkerRef.current?.remove()
+    focusedMarkerRef.current = null
+    if (!validFocusedLocation) {
+      if (locationCameraModeRef.current === 'shared') locationCameraModeRef.current = 'places'
+      return
+    }
+
+    locationCameraModeRef.current = 'shared'
+    const popup = new maplibregl.Popup({ offset: 28, closeButton: true, maxWidth: '330px' })
+      .setDOMContent(createLocationPopupContent(validFocusedLocation, {
+        kind: 'shared',
+        label: focusedLocation?.label,
+        sharedAt: focusedLocation?.sharedAt,
+      }))
+    focusedMarkerRef.current = new maplibregl.Marker({
+      element: createLocationMarkerElement('shared'),
+      anchor: 'bottom',
+    })
+      .setLngLat(mapCoordinates(validFocusedLocation))
+      .setPopup(popup)
+      .addTo(map)
+    map.flyTo({ center: mapCoordinates(validFocusedLocation), zoom: 16, duration: 750 })
+    popup.setLngLat(mapCoordinates(validFocusedLocation)).addTo(map)
+  }, [focusedLocation, mapReady, validFocusedLocation])
+
+  useEffect(() => {
+    const map = mapRef.current
     const source = map?.getSource(SOURCE_ID)
     if (!map || !mapReady || !source) return
 
     source.setData(toFeatureCollection(validPlaces))
+    if (locationCameraModeRef.current !== 'places' || validFocusedLocation) return
     if (validPlaces.length === 0) return
 
     const bounds = new maplibregl.LngLatBounds()
@@ -454,7 +673,20 @@ export default function AwsPlacesMap({ places = [], loading = false, error = '',
         duration: 700,
       })
     }
-  }, [mapReady, validPlaces])
+  }, [mapReady, validFocusedLocation, validPlaces])
+
+  const handleLocate = async () => {
+    try {
+      const location = normalizeLocation(await onLocate?.())
+      const map = mapRef.current
+      if (!location || !map || !mapReady) return
+      onClearFocusedLocation?.()
+      locationCameraModeRef.current = 'self'
+      map.flyTo({ center: mapCoordinates(location), zoom: 16, duration: 750 })
+    } catch {
+      // The location hook exposes a localized error in the map overlay.
+    }
+  }
 
   if (!apiKey) {
     return (
@@ -468,13 +700,54 @@ export default function AwsPlacesMap({ places = [], loading = false, error = '',
   }
 
   return (
-    <div className="aws-map-panel">
+    <div ref={panelRef} className="aws-map-panel">
       <div ref={containerRef} className="aws-map-canvas" aria-label="Bản đồ Amazon Location chứa các địa điểm tìm được" />
 
       <div className="map-result-badge">
         <span><MapPinned size={17} /></span>
         <div><strong>{validPlaces.length} địa điểm</strong><small>Amazon Location Maps</small></div>
       </div>
+
+      <div className="map-location-actions" aria-label="Vị trí của bạn trên bản đồ">
+        <button
+          type="button"
+          onClick={handleLocate}
+          disabled={locationStatus === 'requesting' || !mapReady}
+          aria-label="Hiển thị vị trí của tôi"
+          title="Vị trí của tôi"
+        >
+          {locationStatus === 'requesting'
+            ? <span className="map-location-spinner" />
+            : <LocateFixed size={17} />}
+          <span>{locationStatus === 'requesting' ? 'Đang định vị…' : 'Vị trí của tôi'}</span>
+        </button>
+        <button
+          type="button"
+          onClick={onShareLocation}
+          disabled={locationStatus === 'requesting'}
+          aria-label="Chia sẻ vị trí của tôi với bạn bè"
+          title="Chia sẻ vị trí"
+        >
+          <Share2 size={17} />
+          <span>Chia sẻ</span>
+        </button>
+      </div>
+
+      {locationError && (
+        <div className="map-location-error" role="alert">{locationError}</div>
+      )}
+
+      {validFocusedLocation && (
+        <div className="map-focused-location" role="status">
+          <MapPin size={17} aria-hidden="true" />
+          <span>{focusedLocation?.label || 'Vị trí được chia sẻ'}</span>
+          <button type="button" onClick={onClearFocusedLocation} aria-label="Đóng vị trí được chia sẻ">
+            <X size={15} />
+          </button>
+        </div>
+      )}
+
+      <FullscreenMapFilters filters={filters} />
 
       {(loading || (!mapReady && !mapError)) && (
         <div className="map-loading"><span className="loader" /><p>Đang tải bản đồ AWS và các điểm đến…</p></div>

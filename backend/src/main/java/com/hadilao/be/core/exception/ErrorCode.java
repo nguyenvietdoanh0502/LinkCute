@@ -38,6 +38,17 @@ public enum ErrorCode {
 
     MISSING_FULL_NAME("MISSING_FULL_NAME", "Full name is required", 400),
     INVALID_FULL_NAME("INVALID_FULL_NAME", "Full name must be between 2 and 100 characters", 400),
+    INVALID_BIRTH_YEAR("INVALID_BIRTH_YEAR", "Birth year must be between 1900 and the current year", 400),
+    INVALID_ADDRESS("INVALID_ADDRESS", "Address must not exceed 255 characters", 400),
+    INVALID_AVATAR("INVALID_AVATAR", "Avatar must be a valid JPEG, PNG, or WebP image", 400),
+    AVATAR_TOO_LARGE("AVATAR_TOO_LARGE", "Avatar must not exceed 5 MB", 413),
+    AVATAR_UPLOAD_FAILED("AVATAR_UPLOAD_FAILED", "Could not store the avatar", 502),
+    AVATAR_STORAGE_NOT_CONFIGURED("AVATAR_STORAGE_NOT_CONFIGURED", "Avatar storage is not configured", 503),
+
+    MISSING_ADDRESSEE_ID("MISSING_ADDRESSEE_ID", "Addressee id is required", 400),
+    INVALID_PIN_CODE("INVALID_PIN_CODE", "PIN code must match RML- followed by 6 digits", 400),
+    MISSING_PLAN_INVITEE_ID("MISSING_PLAN_INVITEE_ID", "Plan invitee id is required", 400),
+    INVALID_PLAN_DATA("INVALID_PLAN_DATA", "Plan data is invalid", 400),
 
     MISSING_OTP("MISSING_OTP", "OTP is required", 400),
     INVALID_OTP_FORMAT("INVALID_OTP_FORMAT", "OTP must be exactly 6 digits", 400),
@@ -53,6 +64,36 @@ public enum ErrorCode {
     RESOURCE_NOT_FOUND("RESOURCE_NOT_FOUND", "Resource not found", 404),
     CONCURRENCY_CONFLICT("CONCURRENCY_CONFLICT", "Resource is being processed by another user", 409),
     RATE_LIMIT_EXCEEDED("RATE_LIMIT_EXCEEDED", "Rate limit exceeded", 429),
+
+    // ==========================================
+    // FRIENDSHIP ERRORS
+    // ==========================================
+    CANNOT_FRIEND_SELF("CANNOT_FRIEND_SELF", "You cannot send a friend request to yourself", 400),
+    FRIEND_REQUEST_ALREADY_EXISTS("FRIEND_REQUEST_ALREADY_EXISTS", "A friend request already exists", 409),
+    ALREADY_FRIENDS("ALREADY_FRIENDS", "Users are already friends", 409),
+    FRIEND_REQUEST_NOT_FOUND("FRIEND_REQUEST_NOT_FOUND", "Friend request not found", 404),
+    FRIENDSHIP_NOT_FOUND("FRIENDSHIP_NOT_FOUND", "Friendship not found", 404),
+
+    // ==========================================
+    // DIRECT CHAT ERRORS
+    // ==========================================
+    CHAT_REQUIRES_FRIENDSHIP("CHAT_REQUIRES_FRIENDSHIP", "Only accepted friends can exchange messages", 403),
+    CHAT_RECIPIENT_NOT_FOUND("CHAT_RECIPIENT_NOT_FOUND", "Chat recipient not found", 404),
+    CHAT_SELF_NOT_ALLOWED("CHAT_SELF_NOT_ALLOWED", "You cannot send a direct message to yourself", 400),
+    INVALID_CHAT_MESSAGE("INVALID_CHAT_MESSAGE", "Message content must contain between 1 and 2000 characters", 400),
+    INVALID_CHAT_LOCATION("INVALID_CHAT_LOCATION", "Location must contain valid coordinates and accuracy", 400),
+
+    // ==========================================
+    // PLAN SHARING ERRORS
+    // ==========================================
+    PLAN_NOT_FOUND("PLAN_NOT_FOUND", "Plan not found", 404),
+    PLAN_INVITATION_NOT_FOUND("PLAN_INVITATION_NOT_FOUND", "Plan invitation not found", 404),
+    PLAN_MEMBER_NOT_FOUND("PLAN_MEMBER_NOT_FOUND", "Plan member not found", 404),
+    CANNOT_INVITE_SELF_TO_PLAN("CANNOT_INVITE_SELF_TO_PLAN", "You cannot invite yourself to a plan", 400),
+    PLAN_INVITEE_NOT_FRIEND("PLAN_INVITEE_NOT_FRIEND", "Only an accepted friend can be invited", 409),
+    PLAN_INVITATION_ALREADY_PENDING("PLAN_INVITATION_ALREADY_PENDING", "A plan invitation is already pending", 409),
+    PLAN_MEMBER_ALREADY_EXISTS("PLAN_MEMBER_ALREADY_EXISTS", "User is already a plan member", 409),
+    PLAN_OWNER_CANNOT_LEAVE("PLAN_OWNER_CANNOT_LEAVE", "The plan owner cannot leave their own plan", 409),
 
     // ==========================================
     // PLACE ERRORS

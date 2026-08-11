@@ -27,4 +27,42 @@ public class UrlConstant {
         public static final String IMPORT_OVERTURE = "/places/import/overture";
         public static final String IMPORT_OSM = "/places/import/osm";
     }
+
+    public static class User {
+        public static final String ME = "/users/me";
+        public static final String PROFILE = "/users/me/profile";
+        public static final String AVATAR = "/users/me/avatar";
+    }
+
+    public static class Friend {
+        public static final String BASE = "/friends";
+        public static final String SEARCH = "/friends/search";
+        public static final String REQUESTS = "/friends/requests";
+        public static final String INCOMING_REQUESTS = "/friends/requests/incoming";
+        public static final String OUTGOING_REQUESTS = "/friends/requests/outgoing";
+        public static final String ACCEPT_REQUEST = "/friends/requests/{id}/accept";
+        public static final String REQUEST_BY_ID = "/friends/requests/{id}";
+        public static final String FRIENDSHIP_BY_ID = "/friends/{friendshipId}";
+    }
+
+    public static class Chat {
+        public static final String FRIEND_MESSAGES = "/chat/friends/{friendId}/messages";
+    }
+
+    public static class Plan {
+        public static final String BASE = "/plans";
+        public static final String SYNC = "/plans/sync";
+        public static final String BY_ID = "/plans/{planId}";
+        public static final String INVITATIONS = "/plans/{planId}/invitations";
+        public static final String MEMBER = "/plans/{planId}/members/{userId}";
+        public static final String MEMBERSHIP = "/plans/{planId}/membership";
+    }
+
+    public static class PlanInvitation {
+        public static final String INCOMING = "/plan-invitations/incoming";
+        public static final String OUTGOING = "/plan-invitations/outgoing";
+        public static final String ACCEPT = "/plan-invitations/{id}/accept";
+        public static final String DECLINE = "/plan-invitations/{id}/decline";
+        public static final String BY_ID = "/plan-invitations/{id}";
+    }
 }
