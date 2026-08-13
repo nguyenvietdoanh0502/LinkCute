@@ -4,6 +4,7 @@ import {
   Copy,
   Inbox,
   MessageCircle,
+  Phone,
   RefreshCw,
   Search,
   Send,
@@ -78,7 +79,7 @@ function EmptyFriendsState({ icon: Icon, title, description }) {
   )
 }
 
-function FriendCard({ friend, busy, onMessage, onRemove }) {
+function FriendCard({ friend, busy, callDisabled, onMessage, onCall, onRemove }) {
   return (
     <article className="friend-card">
       <ProfileAvatar user={friend.user} />
@@ -87,6 +88,16 @@ function FriendCard({ friend, busy, onMessage, onRemove }) {
         meta={`Bạn bè từ ${formatDate(friend.friendsSince, 'gần đây')}`}
       />
       <div className="friend-card__actions">
+        <button
+          className="friend-icon-action friend-icon-action--call"
+          type="button"
+          onClick={() => onCall(friend)}
+          disabled={callDisabled || !onCall}
+          aria-label={`Gọi thoại cho ${friend.user?.fullName || 'thành viên này'}`}
+          title={callDisabled || !onCall ? 'Cuộc gọi chưa sẵn sàng' : 'Gọi thoại'}
+        >
+          <Phone size={17} aria-hidden="true" />
+        </button>
         <button
           className="friend-icon-action friend-icon-action--message"
           type="button"
@@ -178,7 +189,9 @@ function SearchResultCard({
   onReject,
   onCancel,
   onMessage,
+  onCall,
   onRemove,
+  callDisabled,
 }) {
   const status = result.relationshipStatus || 'NONE'
   const acceptBusy = incomingRequest && busyActions.has(`accept:${incomingRequest.id}`)
@@ -254,6 +267,14 @@ function SearchResultCard({
           <>
             <span className="friend-status friend-status--friends"><Check size={15} /> Đã là bạn bè</span>
             <button
+              className="button button--secondary"
+              type="button"
+              onClick={() => onCall({ friendshipId, user: result })}
+              disabled={callDisabled || !onCall}
+            >
+              <Phone size={16} /> Gọi thoại
+            </button>
+            <button
               className="button button--primary"
               type="button"
               onClick={() => onMessage({ friendshipId, user: result })}
@@ -278,7 +299,16 @@ function SearchResultCard({
   )
 }
 
-export default function FriendsPanel({ open, onClose, session, friendshipState, showToast, onOpenChat }) {
+export default function FriendsPanel({
+  open,
+  onClose,
+  session,
+  friendshipState,
+  showToast,
+  onOpenChat,
+  onStartCall,
+  callDisabled = false,
+}) {
   const drawerRef = useRef(null)
   const [activeTab, setActiveTab] = useState('friends')
   const [pinCode, setPinCode] = useState('')
@@ -435,6 +465,7 @@ export default function FriendsPanel({ open, onClose, session, friendshipState, 
     )
   }
   const handleMessage = (friend) => onOpenChat?.(friend)
+  const handleCall = (friend) => onStartCall?.(friend)
 
   const handleTabKeyDown = (event, currentTab) => {
     const currentIndex = TAB_ORDER.indexOf(currentTab)
@@ -537,7 +568,9 @@ export default function FriendsPanel({ open, onClose, session, friendshipState, 
                 onReject={handleReject}
                 onCancel={handleCancel}
                 onMessage={handleMessage}
+                onCall={handleCall}
                 onRemove={handleRemove}
+                callDisabled={callDisabled}
               />
             )}
 
@@ -602,7 +635,9 @@ export default function FriendsPanel({ open, onClose, session, friendshipState, 
                       key={friend.friendshipId}
                       friend={friend}
                       busy={busyActions.has(`remove:${friend.friendshipId}`)}
+                      callDisabled={callDisabled}
                       onMessage={handleMessage}
+                      onCall={handleCall}
                       onRemove={handleRemove}
                     />
                   ))}

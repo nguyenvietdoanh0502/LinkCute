@@ -3,6 +3,7 @@ import {
   ChevronUp,
   MapPin,
   MessageCircle,
+  Phone,
   RefreshCw,
   Send,
   UsersRound,
@@ -93,8 +94,11 @@ export default function ChatPanel({
   initialFriendId,
   currentUserId,
   chatState,
+  callStatus = 'idle',
+  callConnectionStatus = 'disconnected',
   showToast,
   onOpenLocation,
+  onStartCall,
 }) {
   const panelRef = useRef(null)
   const composerRef = useRef(null)
@@ -282,6 +286,16 @@ export default function ChatPanel({
                     <strong>{selectedFriend.user?.fullName || 'Thành viên LinkCute'}</strong>
                     <span className={connectionClass}><i />{connectionLabel}</span>
                   </div>
+                  <button
+                    className="chat-call-action"
+                    type="button"
+                    onClick={() => onStartCall?.(selectedFriend)}
+                    disabled={!onStartCall || callStatus !== 'idle' || callConnectionStatus !== 'connected'}
+                    aria-label={`Gọi thoại cho ${selectedFriend.user?.fullName || 'người bạn này'}`}
+                    title={callConnectionStatus === 'connected' ? 'Gọi thoại' : 'Đang chờ kết nối cuộc gọi'}
+                  >
+                    <Phone size={19} aria-hidden="true" />
+                  </button>
                 </header>
 
                 <div ref={messagesContainerRef} className="chat-messages" aria-live="polite" aria-label={`Tin nhắn với ${selectedFriend.user?.fullName || 'bạn bè'}`}>

@@ -165,13 +165,14 @@ class JwtStompChannelInterceptorTest {
         verifyNoInteractions(userDetailsService, sessionRevocationService);
     }
 
-    @Test
-    void sendRevalidatesTheConnectionTokenAndAllowsOnlyTheChatApplicationRoute() {
+    @ParameterizedTest
+    @ValueSource(strings = {"/app/chat.send", "/app/call.signal"})
+    void sendRevalidatesTheConnectionTokenForEachAllowedApplicationRoute(String destination) {
         User user = activeUser();
         stubValidToken(user);
         Message<byte[]> send = stomp(
                 StompCommand.SEND,
-                "/app/chat.send",
+                destination,
                 connectedPrincipal(user),
                 null,
                 null
@@ -189,7 +190,12 @@ class JwtStompChannelInterceptorTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"/user/queue/messages", "/user/queue/chat-errors"})
+    @ValueSource(strings = {
+            "/user/queue/messages",
+            "/user/queue/chat-errors",
+            "/user/queue/call-signals",
+            "/user/queue/call-errors"
+    })
     void subscribeRevalidatesTheConnectionTokenForEachAllowedUserQueue(String destination) {
         User user = activeUser();
         stubValidToken(user);

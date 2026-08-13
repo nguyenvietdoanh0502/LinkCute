@@ -84,6 +84,14 @@ public enum ErrorCode {
     INVALID_CHAT_LOCATION("INVALID_CHAT_LOCATION", "Location must contain valid coordinates and accuracy", 400),
 
     // ==========================================
+    // CALL SIGNALING ERRORS
+    // ==========================================
+    CALL_REQUIRES_FRIENDSHIP("CALL_REQUIRES_FRIENDSHIP", "Only accepted friends can call each other", 403),
+    CALL_RECIPIENT_NOT_FOUND("CALL_RECIPIENT_NOT_FOUND", "Call recipient not found", 404),
+    CALL_SELF_NOT_ALLOWED("CALL_SELF_NOT_ALLOWED", "You cannot call yourself", 400),
+    INVALID_CALL_SIGNAL("INVALID_CALL_SIGNAL", "Call signal is invalid", 400),
+
+    // ==========================================
     // PLAN SHARING ERRORS
     // ==========================================
     PLAN_NOT_FOUND("PLAN_NOT_FOUND", "Plan not found", 404),
