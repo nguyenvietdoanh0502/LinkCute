@@ -34,10 +34,15 @@ public class JwtStompChannelInterceptor implements ChannelInterceptor {
 
     private static final String BEARER_PREFIX = "Bearer ";
     private static final String BLACKLIST_PREFIX = "blacklist:jti:";
-    private static final Set<String> ALLOWED_SEND_DESTINATIONS = Set.of("/app/chat.send");
+    private static final Set<String> ALLOWED_SEND_DESTINATIONS = Set.of(
+            "/app/chat.send",
+            "/app/call.signal"
+    );
     private static final Set<String> ALLOWED_SUBSCRIBE_DESTINATIONS = Set.of(
             "/user/queue/messages",
-            "/user/queue/chat-errors"
+            "/user/queue/chat-errors",
+            "/user/queue/call-signals",
+            "/user/queue/call-errors"
     );
 
     private final JwtProvider jwtProvider;

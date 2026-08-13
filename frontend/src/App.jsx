@@ -20,6 +20,7 @@ import {
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, getStoredSession, subscribeSession } from './api/client.js'
 import AuthModal from './components/AuthModal.jsx'
+import CallOverlay from './components/CallOverlay.jsx'
 import ChatPanel from './components/ChatPanel.jsx'
 import FriendsPanel from './components/FriendsPanel.jsx'
 import ItineraryPanel from './components/ItineraryPanel.jsx'
@@ -31,6 +32,7 @@ import ShareLocationDialog from './components/ShareLocationDialog.jsx'
 import Toast from './components/Toast.jsx'
 import { useDebouncedValue } from './hooks/useDebouncedValue.js'
 import { useChat } from './hooks/useChat.js'
+import { useCall } from './hooks/useCall.js'
 import { useCurrentLocation } from './hooks/useCurrentLocation.js'
 import { useFriendships } from './hooks/useFriendships.js'
 import { useItineraryPlans } from './hooks/useItineraryPlans.js'
@@ -128,6 +130,18 @@ export default function App() {
   } = useItineraryPlans(session)
   const friendshipState = useFriendships(session)
   const chatState = useChat(session)
+  const callState = useCall(session)
+  const callPeer = useMemo(() => {
+    const peerId = callState.peer?.id || callState.peer?.userId
+    if (!peerId) return callState.peer
+    return friendshipState.friends.find((friend) => friend.user?.id === peerId)?.user
+      || callState.peer
+  }, [callState.peer, friendshipState.friends])
+  const visibleCallState = useMemo(() => (
+    callPeer === callState.peer ? callState : { ...callState, peer: callPeer }
+  ), [callPeer, callState])
+  const canStartCall = callState.status === 'idle'
+    && callState.connectionStatus === 'connected'
   const visibleChatUnread = useMemo(() => friendshipState.friends.reduce(
     (total, friend) => total + Number(chatState.unreadByFriend[friend.user?.id] || 0),
     0,
@@ -162,6 +176,20 @@ export default function App() {
   const showToast = useCallback((message, type = 'success') => {
     setToast({ message, type, id: `${Date.now()}-${Math.random()}` })
   }, [])
+  const handleStartCall = useCallback(async (friend) => {
+    setFriendsOpen(false)
+    setChatOpen(false)
+    setItineraryOpen(false)
+    setLocationShareOpen(false)
+    setSelectedPlace(null)
+    setDetailError('')
+    setDetailLoading(false)
+    try {
+      await callState.startCall(friend)
+    } catch (error) {
+      showToast(error?.message || 'Không thể bắt đầu cuộc gọi.', 'error')
+    }
+  }, [callState.startCall, showToast])
   const closeFriends = useCallback(() => setFriendsOpen(false), [])
   const closeChat = useCallback(() => setChatOpen(false), [])
   const closeLocationShare = useCallback(() => setLocationShareOpen(false), [])
@@ -401,6 +429,17 @@ export default function App() {
     setSharedActivePlanId(null)
     setItineraryInitialSubview('plan')
   }, [])
+
+  useEffect(() => {
+    if (callState.status !== 'incoming') return
+    setAuthMode(null)
+    setResumeAfterAuth(null)
+    setLocationShareOpen(false)
+    closeFriends()
+    closeChat()
+    closeItinerary()
+    closeDetail()
+  }, [callState.status, closeChat, closeDetail, closeFriends, closeItinerary])
 
   const handleSelectPlan = useCallback((planId) => {
     if (planSharingState.memberPlans.some((plan) => plan.id === planId)) {
@@ -819,6 +858,8 @@ export default function App() {
         friendshipState={friendshipState}
         showToast={showToast}
         onOpenChat={openChat}
+        onStartCall={handleStartCall}
+        callDisabled={!canStartCall}
       />
       <ChatPanel
         open={chatOpen}
@@ -827,9 +868,13 @@ export default function App() {
         initialFriendId={chatInitialFriendId}
         currentUserId={session?.user?.id}
         chatState={chatState}
+        callStatus={callState.status}
+        callConnectionStatus={callState.connectionStatus}
         showToast={showToast}
         onOpenLocation={handleOpenSharedLocation}
+        onStartCall={handleStartCall}
       />
+      <CallOverlay callState={visibleCallState} />
       <ShareLocationDialog
         open={locationShareOpen}
         onClose={closeLocationShare}
