@@ -460,6 +460,12 @@ CLOUDINARY_API_SECRET=<api-secret>
 CLOUDINARY_FOLDER=linkcute/avatars
 
 APP_CORS_ALLOWED_ORIGINS=
+REFRESH_COOKIE_SAME_SITE=None
+
+Refresh token được lưu trong cookie `__Host-linkcute_refresh` với `Secure`, `HttpOnly`,
+`Path=/` và không có `Domain`. `SameSite=None` chỉ dùng khi frontend/API thực sự
+cross-site và cả hai đều chạy HTTPS; một số trình duyệt vẫn có thể chặn cookie bên thứ ba.
+Nếu triển khai qua reverse proxy cùng site, ưu tiên `Lax` hoặc `Strict`.
 SWAGGER_ENABLED=false
 JAVA_TOOL_OPTIONS=-Xms128m -Xmx512m -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError
 ```

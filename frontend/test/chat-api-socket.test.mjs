@@ -34,7 +34,6 @@ test.beforeEach(() => {
   clientModule.saveSession({
     user: { id: 'user-1', fullName: 'Minh Anh' },
     accessToken: 'chat-access-token',
-    refreshToken: 'chat-refresh-token',
     expiresIn: 3600,
   })
 })

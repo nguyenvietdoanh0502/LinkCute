@@ -34,11 +34,10 @@ test.after(async () => {
   await vite?.close()
 })
 
-test('updating the session user preserves every token field', () => {
+test('updating the session user preserves the access-token session fields', () => {
   client.saveSession({
     user: { id: 'user-1', fullName: 'Tên cũ' },
     accessToken: 'access-token',
-    refreshToken: 'refresh-token',
     expiresIn: 3600,
   })
   const before = client.getStoredSession()
@@ -47,7 +46,6 @@ test('updating the session user preserves every token field', () => {
   const after = client.getStoredSession()
 
   assert.equal(after.accessToken, before.accessToken)
-  assert.equal(after.refreshToken, before.refreshToken)
   assert.equal(after.expiresAt, before.expiresAt)
   assert.equal(after.user.fullName, 'Tên mới')
   assert.equal(after.user.avatarUrl, 'https://res.cloudinary.com/avatar.jpg')

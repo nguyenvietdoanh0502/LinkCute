@@ -36,7 +36,6 @@ test.beforeEach(() => {
   clientModule.saveSession({
     user: { id: CALL_ID },
     accessToken: 'call-access-token',
-    refreshToken: 'call-refresh-token',
     expiresIn: 3600,
   })
 })

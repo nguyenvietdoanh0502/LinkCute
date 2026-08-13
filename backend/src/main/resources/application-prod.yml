@@ -67,6 +67,9 @@ springdoc:
     enabled: ${SWAGGER_ENABLED:false}
 
 roamly:
+  auth:
+    refresh-cookie:
+      same-site: ${REFRESH_COOKIE_SAME_SITE:None}
   cors:
     allowed-origins: ${APP_CORS_ALLOWED_ORIGINS:}
   places:

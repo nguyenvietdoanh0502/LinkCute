@@ -7,7 +7,6 @@ import com.hadilao.be.core.security.SessionRevocationService;
 import com.hadilao.be.modules.auth.dto.AuthResponse;
 import com.hadilao.be.modules.auth.dto.ChangePasswordRequest;
 import com.hadilao.be.modules.auth.dto.RegisterRequest;
-import com.hadilao.be.modules.auth.dto.RefreshTokenRequest;
 import com.hadilao.be.modules.auth.dto.ResetPasswordRequest;
 import com.hadilao.be.modules.auth.dto.VerifyOtpRequest;
 import com.hadilao.be.modules.auth.dto.VerifyOtpForgotPasswordResponse;
@@ -77,6 +76,7 @@ class AuthServiceTest {
     @BeforeEach
     void setUp() {
         ReflectionTestUtils.setField(authService, "jwtExpiration", 3600000L);
+        ReflectionTestUtils.setField(authService, "refreshTokenExpiration", 2592000000L);
         ReflectionTestUtils.setField(authService, "resetPasswordExpiration", 300000L);
     }
 
@@ -166,19 +166,20 @@ class AuthServiceTest {
             when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 
             // Act
-            AuthResponse response = authService.verifyOtp(request, CLIENT_IP);
+            AuthService.AuthenticationResult result = authService.verifyOtp(request, CLIENT_IP);
+            AuthResponse response = result.response();
 
             // Assert
             assertThat(response).isNotNull();
             assertThat(response.getAccessToken()).isEqualTo("access_token");
-            assertThat(response.getRefreshToken()).isEqualTo("refresh_token");
+            assertThat(result.refreshToken()).isEqualTo("refresh_token");
             assertThat(response.getUser().getEmail()).isEqualTo(request.getEmail());
             verify(otpService).verifyOtp(request.getEmail(), request.getOtpCode(), OtpService.OtpType.REGISTER);
             verify(userRegistrationService).verifyUser(request.getEmail());
             verify(valueOperations).set(
                     "refresh:test@example.com",
                     "refresh_token",
-                    Duration.ofDays(30)
+                    Duration.ofMillis(2592000000L)
             );
         }
 
@@ -362,11 +363,85 @@ class AuthServiceTest {
     class RefreshTokenTests {
 
         @Test
+        @SuppressWarnings("unchecked")
+        @DisplayName("Should atomically rotate refresh token with configured TTL")
+        void testRefreshToken_UsesAtomicCompareAndSwap() {
+            String refreshToken = "old_refresh_token";
+            User user = User.builder()
+                    .email("test@example.com")
+                    .status(AccountStatus.ACTIVE)
+                    .sessionVersion(1L)
+                    .build();
+
+            when(jwtProvider.validateRefreshToken(refreshToken)).thenReturn(user);
+            when(jwtProvider.extractSessionVersion(refreshToken)).thenReturn(1L);
+            when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(user));
+            when(sessionRevocationService.isSessionActive(user, 1L)).thenReturn(true);
+            when(jwtProvider.generateToken(user, 1L)).thenReturn("new_access_token");
+            when(jwtProvider.generateRefreshToken(user, 1L)).thenReturn("new_refresh_token");
+            when(redisTemplate.execute(
+                    any(DefaultRedisScript.class),
+                    eq(List.of("refresh:test@example.com")),
+                    eq(refreshToken),
+                    eq("new_refresh_token"),
+                    eq("2592000000")
+            )).thenReturn(1L);
+
+            AuthService.TokenRefreshResult result = authService.refreshToken(refreshToken);
+
+            assertThat(result.response().getAccessToken()).isEqualTo("new_access_token");
+            assertThat(result.refreshToken()).isEqualTo("new_refresh_token");
+            verify(redisTemplate).execute(
+                    argThat(script -> script.getScriptAsString().contains("psetex")),
+                    eq(List.of("refresh:test@example.com")),
+                    eq(refreshToken),
+                    eq("new_refresh_token"),
+                    eq("2592000000")
+            );
+            verify(valueOperations, never()).get(anyString());
+        }
+
+        @Test
+        @SuppressWarnings("unchecked")
+        @DisplayName("Should reject a replay that loses atomic rotation without clearing newer cookie")
+        void testRefreshToken_RejectsCasMismatch() {
+            String refreshToken = "old_refresh_token";
+            User user = User.builder()
+                    .email("test@example.com")
+                    .status(AccountStatus.ACTIVE)
+                    .sessionVersion(1L)
+                    .build();
+
+            when(jwtProvider.validateRefreshToken(refreshToken)).thenReturn(user);
+            when(jwtProvider.extractSessionVersion(refreshToken)).thenReturn(1L);
+            when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(user));
+            when(sessionRevocationService.isSessionActive(user, 1L)).thenReturn(true);
+            when(jwtProvider.generateToken(user, 1L)).thenReturn("new_access_token");
+            when(jwtProvider.generateRefreshToken(user, 1L)).thenReturn("new_refresh_token");
+            when(redisTemplate.execute(
+                    any(DefaultRedisScript.class), anyList(), anyString(), anyString(), anyString()
+            )).thenReturn(0L);
+
+            assertThatThrownBy(() -> authService.refreshToken(refreshToken))
+                    .isInstanceOf(RefreshTokenRejectedException.class)
+                    .satisfies(exception -> assertThat(
+                            ((RefreshTokenRejectedException) exception).shouldClearCookie()).isFalse());
+        }
+
+        @Test
+        void testRefreshToken_PropagatesInfrastructureFailure() {
+            when(jwtProvider.validateRefreshToken("refresh_token"))
+                    .thenThrow(new IllegalStateException("user store unavailable"));
+
+            assertThatThrownBy(() -> authService.refreshToken("refresh_token"))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessage("user store unavailable");
+        }
+
+        @Test
         @DisplayName("Should reject refresh token from a revoked session version")
         void testRefreshToken_RejectsRevokedSession() {
             String refreshToken = "refresh_token";
-            RefreshTokenRequest request = new RefreshTokenRequest();
-            request.setRefreshToken(refreshToken);
             User user = User.builder()
                     .email("test@example.com")
                     .status(AccountStatus.ACTIVE)
@@ -375,17 +450,55 @@ class AuthServiceTest {
 
             when(jwtProvider.validateRefreshToken(refreshToken)).thenReturn(user);
             when(jwtProvider.extractSessionVersion(refreshToken)).thenReturn(1L);
-            when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-            when(valueOperations.get("refresh:test@example.com")).thenReturn(refreshToken);
             when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(user));
             when(sessionRevocationService.isSessionActive(user, 1L)).thenReturn(false);
 
-            assertThatThrownBy(() -> authService.refreshToken(request))
+            assertThatThrownBy(() -> authService.refreshToken(refreshToken))
                     .isInstanceOf(AppException.class)
                     .hasFieldOrPropertyWithValue("errorCode", ErrorCode.INVALID_REFRESH_TOKEN);
 
             verify(jwtProvider, never()).generateToken(any(UserDetails.class), anyLong());
             verify(jwtProvider, never()).generateRefreshToken(any(UserDetails.class), anyLong());
+        }
+    }
+
+    @Nested
+    @DisplayName("logout Tests")
+    class LogoutTests {
+
+        @Test
+        @SuppressWarnings("unchecked")
+        void testLogout_AtomicallyRevokesOnlyMatchingRefreshToken() {
+            User user = User.builder().email("test@example.com").build();
+            when(jwtProvider.validateRefreshToken("refresh_token")).thenReturn(user);
+            when(redisTemplate.execute(
+                    any(DefaultRedisScript.class),
+                    eq(List.of("refresh:test@example.com")),
+                    eq("refresh_token")
+            )).thenReturn(1L);
+
+            authService.logout("refresh_token", null);
+
+            verify(redisTemplate).execute(
+                    argThat(script -> script.getScriptAsString().contains("redis.call('del'")),
+                    eq(List.of("refresh:test@example.com")),
+                    eq("refresh_token")
+            );
+            verify(redisTemplate, never()).delete(anyString());
+        }
+
+        @Test
+        void testLogout_PropagatesAccessTokenBlacklistFailure() {
+            when(jwtProvider.isAccessToken("access_token")).thenReturn(true);
+            when(jwtProvider.extractJwtId("access_token")).thenReturn("token-id");
+            when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+            doThrow(new IllegalStateException("redis unavailable"))
+                    .when(valueOperations)
+                    .set("blacklist:jti:token-id", "true", Duration.ofHours(1));
+
+            assertThatThrownBy(() -> authService.logout(null, "access_token"))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessage("redis unavailable");
         }
     }
 }

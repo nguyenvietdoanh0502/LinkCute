@@ -106,7 +106,6 @@ export default function App() {
   const debouncedSearch = useDebouncedValue(search, 450)
   const sessionIdentity = session?.user?.id
     || session?.user?.email
-    || session?.refreshToken
     || session?.accessToken
     || ''
   const sessionIdentityRef = useRef(sessionIdentity)
