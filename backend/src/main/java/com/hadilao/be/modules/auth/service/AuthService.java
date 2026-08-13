@@ -11,7 +11,7 @@ import com.hadilao.be.modules.user.entity.User;
 import com.hadilao.be.modules.user.enums.AccountStatus;
 import com.hadilao.be.modules.user.repository.UserRepository;
 import com.hadilao.be.modules.user.service.UserRegistrationService;
-import jakarta.servlet.http.HttpServletRequest;
+import io.jsonwebtoken.JwtException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -39,6 +39,21 @@ public class AuthService {
                     Long.class
             );
 
+    private static final DefaultRedisScript<Long> ROTATE_REFRESH_TOKEN_SCRIPT =
+            new DefaultRedisScript<>(
+                    "if redis.call('get', KEYS[1]) == ARGV[1] then "
+                            + "redis.call('psetex', KEYS[1], ARGV[3], ARGV[2]); return 1 "
+                            + "else return 0 end",
+                    Long.class
+            );
+
+    private static final DefaultRedisScript<Long> REVOKE_REFRESH_TOKEN_SCRIPT =
+            new DefaultRedisScript<>(
+                    "if redis.call('get', KEYS[1]) == ARGV[1] "
+                            + "then return redis.call('del', KEYS[1]) else return 0 end",
+                    Long.class
+            );
+
     private final UserRegistrationService userRegistrationService;
     private final PasswordEncoder passwordEncoder;
     private final JwtProvider jwtProvider;
@@ -51,6 +66,9 @@ public class AuthService {
 
     @Value("${roamly.jwt.access-token-expiration}")
     private long jwtExpiration;
+
+    @Value("${roamly.jwt.refresh-token-expiration}")
+    private long refreshTokenExpiration;
 
     @Value("${roamly.jwt.reset-password-expiration}")
     private long resetPasswordExpiration;
@@ -72,7 +90,7 @@ public class AuthService {
         mailService.sendOtpEmail(request.getEmail(), otpCode);
     }
 
-    public AuthResponse login(LoginRequest request, String ipAddress){
+    public AuthenticationResult login(LoginRequest request, String ipAddress){
         if(!rateLimiterService.isLoginIpAllowed(ipAddress)){
             throw new AppException(ErrorCode.RATE_LIMIT_EXCEEDED);
         }
@@ -115,59 +133,104 @@ public class AuthService {
         String accessToken = jwtProvider.generateToken(userDetails, sessionVersion);
         String refreshToken = jwtProvider.generateRefreshToken(userDetails, sessionVersion);
         String redisKey = "refresh:" + userDTO.getEmail();
-        redisTemplate.opsForValue().set(redisKey, refreshToken, Duration.ofDays(30));
-        return AuthResponse.builder()
+        storeRefreshToken(redisKey, refreshToken);
+        AuthResponse response = AuthResponse.builder()
                 .user(userDTO)
                 .accessToken(accessToken)
-                .refreshToken(refreshToken)
                 .expiresIn(jwtExpiration / 1000)
                 .build();
+        return new AuthenticationResult(response, refreshToken);
     }
-    public RefreshTokenResponse refreshToken(RefreshTokenRequest request){
-        UserDetails userDetails = jwtProvider.validateRefreshToken(request.getRefreshToken());
-        String email = userDetails.getUsername();
-        Long sessionVersion = jwtProvider.extractSessionVersion(request.getRefreshToken());
-        String redisKey = "refresh:" + email;
-        String storedToken = redisTemplate.opsForValue().get(redisKey);
-        if(storedToken==null || !storedToken.equals(request.getRefreshToken())){
-            throw new AppException(ErrorCode.INVALID_REFRESH_TOKEN);
+    public TokenRefreshResult refreshToken(String refreshToken){
+        if (refreshToken == null || refreshToken.isBlank()) {
+            throw new RefreshTokenRejectedException(true);
         }
 
+        UserDetails userDetails;
+        Long sessionVersion;
+        try {
+            userDetails = jwtProvider.validateRefreshToken(refreshToken);
+            sessionVersion = jwtProvider.extractSessionVersion(refreshToken);
+        } catch (AppException | JwtException | IllegalArgumentException exception) {
+            throw new RefreshTokenRejectedException(true);
+        }
+        if (sessionVersion == null) {
+            throw new RefreshTokenRejectedException(true);
+        }
+        String email = userDetails.getUsername();
+        String redisKey = "refresh:" + email;
+
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new AppException(ErrorCode.INVALID_REFRESH_TOKEN));
+                .orElseThrow(() -> new RefreshTokenRejectedException(true));
         if (user.isDeleted() || user.getStatus() == AccountStatus.BANNED) {
             sessionRevocationService.revokeAllSessions(user);
-            throw new AppException(ErrorCode.INVALID_REFRESH_TOKEN);
+            throw new RefreshTokenRejectedException(true);
         }
         if (!sessionRevocationService.isSessionActive(user, sessionVersion)) {
-            throw new AppException(ErrorCode.INVALID_REFRESH_TOKEN);
+            throw new RefreshTokenRejectedException(true);
         }
 
         String newAccessToken = jwtProvider.generateToken(userDetails, sessionVersion);
         String newRefreshToken = jwtProvider.generateRefreshToken(userDetails, sessionVersion);
-        redisTemplate.opsForValue().set(redisKey, newRefreshToken,Duration.ofDays(30));
-        return RefreshTokenResponse.builder()
+        Long rotated = redisTemplate.execute(
+                ROTATE_REFRESH_TOKEN_SCRIPT,
+                List.of(redisKey),
+                refreshToken,
+                newRefreshToken,
+                Long.toString(refreshTokenExpiration)
+        );
+        if (!Long.valueOf(1L).equals(rotated)) {
+            // Do not clear the browser cookie here: another tab may have just won the rotation.
+            throw new RefreshTokenRejectedException(false);
+        }
+        RefreshTokenResponse response = RefreshTokenResponse.builder()
                 .accessToken(newAccessToken)
-                .refreshToken(newRefreshToken)
                 .expiresIn(jwtExpiration / 1000)
                 .build();
+        return new TokenRefreshResult(response, newRefreshToken);
     }
 
-    public void logout(HttpServletRequest request){
-        String authHeader = request.getHeader("Authorization");
-        if(authHeader == null || !authHeader.startsWith("Bearer ")){
-            throw new AppException(ErrorCode.UNAUTHENTICATED);
+    public void logout(String refreshToken, String accessToken){
+        revokeRefreshTokenIfCurrent(refreshToken);
+        blacklistAccessTokenIfValid(accessToken);
+    }
+
+    private void revokeRefreshTokenIfCurrent(String refreshToken) {
+        if (refreshToken == null || refreshToken.isBlank()) {
+            return;
         }
-        String accessToken = authHeader.substring(7);
+        try {
+            UserDetails userDetails = jwtProvider.validateRefreshToken(refreshToken);
+            String redisKey = "refresh:" + userDetails.getUsername();
+            redisTemplate.execute(
+                    REVOKE_REFRESH_TOKEN_SCRIPT,
+                    List.of(redisKey),
+                    refreshToken
+            );
+        } catch (AppException | IllegalArgumentException ignored) {
+            // Logout is idempotent. Invalid or expired client cookies are cleared by the controller.
+        }
+    }
 
-        String tokenId = jwtProvider.extractJwtId(accessToken);
-        String email = SecurityContextHolder.getContext().getAuthentication().getName();
-
-        String redisKey = "refresh:" + email;
-        redisTemplate.delete(redisKey);
-        redisTemplate.opsForValue().set(
-                "blacklist:jti:" + tokenId, "true",
-                Duration.ofMillis(jwtExpiration));
+    private void blacklistAccessTokenIfValid(String accessToken) {
+        if (accessToken == null || accessToken.isBlank()) {
+            return;
+        }
+        String tokenId;
+        try {
+            if (!jwtProvider.isAccessToken(accessToken)) {
+                return;
+            }
+            tokenId = jwtProvider.extractJwtId(accessToken);
+        } catch (RuntimeException ignored) {
+            // An expired or malformed access token must not prevent cookie cleanup.
+            return;
+        }
+        if (tokenId != null && !tokenId.isBlank()) {
+            redisTemplate.opsForValue().set(
+                    "blacklist:jti:" + tokenId, "true",
+                    Duration.ofMillis(jwtExpiration));
+        }
     }
 
     @Transactional
@@ -249,7 +312,7 @@ public class AuthService {
         sessionRevocationService.revokeAllSessions(user);
     }
 
-    public AuthResponse verifyOtp(VerifyOtpRequest request, String ipAddress) {
+    public AuthenticationResult verifyOtp(VerifyOtpRequest request, String ipAddress) {
         if (!rateLimiterService.isOtpVerificationAllowed(
                 request.getEmail(), ipAddress, OtpService.OtpType.REGISTER)) {
             throw new AppException(ErrorCode.RATE_LIMIT_EXCEEDED);
@@ -273,17 +336,35 @@ public class AuthService {
         long sessionVersion = user.getSessionVersion();
         String accessToken = jwtProvider.generateToken(userDetails, sessionVersion);
         String refreshToken = jwtProvider.generateRefreshToken(userDetails, sessionVersion);
-        redisTemplate.opsForValue().set(
-                "refresh:" + userDTO.getEmail(),
-                refreshToken,
-                Duration.ofDays(30)
-        );
+        storeRefreshToken("refresh:" + userDTO.getEmail(), refreshToken);
 
-        return AuthResponse.builder()
+        AuthResponse response = AuthResponse.builder()
                 .user(userDTO)
                 .accessToken(accessToken)
-                .refreshToken(refreshToken)
                 .expiresIn(jwtExpiration / 1000)
                 .build();
+        return new AuthenticationResult(response, refreshToken);
+    }
+
+    private void storeRefreshToken(String redisKey, String refreshToken) {
+        redisTemplate.opsForValue().set(
+                redisKey,
+                refreshToken,
+                Duration.ofMillis(refreshTokenExpiration)
+        );
+    }
+
+    public record AuthenticationResult(AuthResponse response, String refreshToken) {
+        @Override
+        public String toString() {
+            return "AuthenticationResult[REDACTED]";
+        }
+    }
+
+    public record TokenRefreshResult(RefreshTokenResponse response, String refreshToken) {
+        @Override
+        public String toString() {
+            return "TokenRefreshResult[REDACTED]";
+        }
     }
 }

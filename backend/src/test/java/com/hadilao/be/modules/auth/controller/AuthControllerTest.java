@@ -28,6 +28,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
@@ -214,9 +215,12 @@ public class AuthControllerTest {
         @DisplayName("Should return a domain error when refresh token is missing")
         void testRefreshToken_MissingToken() throws Exception {
             mockMvc.perform(post("/api/v1/auth/refresh-token")
+                            .header("X-Requested-With", "XMLHttpRequest")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("{}"))
                     .andExpect(status().isUnauthorized())
+                    .andExpect(header().string("Set-Cookie", org.hamcrest.Matchers.containsString(
+                            "__Host-linkcute_refresh=;")))
                     .andExpect(jsonPath("$.status").value("error"))
                     .andExpect(jsonPath("$.errorCode").value("INVALID_REFRESH_TOKEN"));
         }

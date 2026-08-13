@@ -123,3 +123,10 @@ test('call overlay source wires remote audio and every useCall action', async ()
   assert.match(source, /onClick=\{callState\?\.toggleMute\}/)
   assert.match(source, /callState\?\.resetCall/)
 })
+
+test('outgoing call keeps overflow usable without showing a scrollbar', async () => {
+  const styles = await readFile(new URL('../src/styles.css', import.meta.url), 'utf8')
+
+  assert.match(styles, /\.call-overlay--outgoing \.call-dialog\s*\{[^}]*scrollbar-width:\s*none/)
+  assert.match(styles, /\.call-overlay--outgoing \.call-dialog::\-webkit-scrollbar\s*\{[^}]*display:\s*none/)
+})

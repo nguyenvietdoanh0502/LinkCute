@@ -123,7 +123,8 @@ test('application wires one-shot geolocation, sharing, typed chat, and map focus
   ])
 
   assert.match(appSource, /const sessionIdentity = session\?\.user\?\.id[\s\S]{0,160}session\?\.user\?\.email/)
-  assert.match(appSource, /\|\| session\?\.refreshToken[\s\S]{0,80}\|\| session\?\.accessToken/)
+  assert.match(appSource, /session\?\.user\?\.email[\s\S]{0,80}\|\| session\?\.accessToken/)
+  assert.doesNotMatch(appSource, /session\?\.refreshToken/)
   assert.match(appSource, /const locationState = useCurrentLocation\(sessionIdentity\)/)
   assert.match(appSource, /previousSessionIdentityRef\.current === sessionIdentity/)
   assert.match(appSource, /setLocationShareOpen\(false\)[\s\S]{0,100}setFocusedLocation\(null\)/)

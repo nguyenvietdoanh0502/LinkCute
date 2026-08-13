@@ -1,6 +1,7 @@
 const API_ORIGIN = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
 const API_PREFIX = '/api/v1'
 const SESSION_KEY = 'linkcute.demo.session'
+const COOKIE_AUTH_HEADERS = { 'X-Requested-With': 'XMLHttpRequest' }
 
 export class ApiError extends Error {
   constructor(message, status, errorCode) {
@@ -17,7 +18,22 @@ let refreshPromise = null
 export function getStoredSession() {
   try {
     const value = localStorage.getItem(SESSION_KEY)
-    return value ? JSON.parse(value) : null
+    if (!value) return null
+
+    const storedSession = JSON.parse(value)
+    if (!storedSession || typeof storedSession !== 'object' || Array.isArray(storedSession)) {
+      localStorage.removeItem(SESSION_KEY)
+      return null
+    }
+
+    if (Object.prototype.hasOwnProperty.call(storedSession, 'refreshToken')) {
+      const session = { ...storedSession }
+      delete session.refreshToken
+      localStorage.setItem(SESSION_KEY, JSON.stringify(session))
+      return session
+    }
+
+    return storedSession
   } catch {
     localStorage.removeItem(SESSION_KEY)
     return null
@@ -42,7 +58,6 @@ export function saveSession(authData) {
   const session = {
     user: authData.user || previous?.user || null,
     accessToken: authData.accessToken,
-    refreshToken: authData.refreshToken,
     expiresAt: Date.now() + Number(authData.expiresIn || 0) * 1000,
   }
   localStorage.setItem(SESSION_KEY, JSON.stringify(session))
@@ -83,13 +98,16 @@ async function parseResponse(response) {
 
 async function refreshSession() {
   const session = getStoredSession()
-  if (!session?.refreshToken) throw new ApiError('Phiên đăng nhập đã hết hạn.', 401)
+  if (!session?.accessToken) {
+    clearSession()
+    throw new ApiError('Phiên đăng nhập đã hết hạn.', 401, 'UNAUTHENTICATED')
+  }
 
   if (!refreshPromise) {
     refreshPromise = fetch(`${API_ORIGIN}${API_PREFIX}/auth/refresh-token`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken: session.refreshToken }),
+      credentials: 'include',
+      headers: COOKIE_AUTH_HEADERS,
     })
       .then(async (response) => {
         const payload = await parseResponse(response)
@@ -112,7 +130,10 @@ async function refreshSession() {
 
 export async function ensureFreshSession(minValidityMs = 30_000) {
   const session = getStoredSession()
-  if (!session?.accessToken) throw new ApiError('Phiên đăng nhập đã hết hạn.', 401, 'UNAUTHENTICATED')
+  if (!session?.accessToken) {
+    clearSession()
+    throw new ApiError('Phiên đăng nhập đã hết hạn.', 401, 'UNAUTHENTICATED')
+  }
 
   const expiresAt = Number(session.expiresAt || 0)
   if (!expiresAt || expiresAt - Date.now() <= minValidityMs) {
@@ -122,11 +143,12 @@ export async function ensureFreshSession(minValidityMs = 30_000) {
 }
 
 async function request(path, options = {}, retry = true) {
-  const { auth = false, body, headers, ...fetchOptions } = options
+  const { auth = false, body, headers, credentials, ...fetchOptions } = options
   const session = getStoredSession()
   const isFormData = typeof FormData !== 'undefined' && body instanceof FormData
   const response = await fetch(`${API_ORIGIN}${API_PREFIX}${path}`, {
     ...fetchOptions,
+    ...(credentials ? { credentials } : {}),
     headers: {
       ...(body !== undefined && !isFormData ? { 'Content-Type': 'application/json' } : {}),
       ...(auth && session?.accessToken ? { Authorization: `Bearer ${session.accessToken}` } : {}),
@@ -135,7 +157,7 @@ async function request(path, options = {}, retry = true) {
     body: body === undefined ? undefined : isFormData ? body : JSON.stringify(body),
   })
 
-  if (response.status === 401 && auth && retry && session?.refreshToken) {
+  if (response.status === 401 && auth && retry && session?.accessToken) {
     await refreshSession()
     return request(path, options, false)
   }
@@ -179,13 +201,23 @@ export const api = {
     return request('/auth/register', { method: 'POST', body })
   },
   login(body) {
-    return request('/auth/login', { method: 'POST', body }).then((response) => {
+    return request('/auth/login', {
+      method: 'POST',
+      body,
+      credentials: 'include',
+      headers: COOKIE_AUTH_HEADERS,
+    }).then((response) => {
       saveSession(response.data)
       return response
     })
   },
   verifyRegistration(body) {
-    return request('/auth/verify-otp', { method: 'POST', body }).then((response) => {
+    return request('/auth/verify-otp', {
+      method: 'POST',
+      body,
+      credentials: 'include',
+      headers: COOKIE_AUTH_HEADERS,
+    }).then((response) => {
       saveSession(response.data)
       return response
     })
@@ -342,7 +374,12 @@ export const api = {
   },
   async logout() {
     try {
-      await request('/auth/logout', { method: 'POST', auth: true })
+      await request('/auth/logout', {
+        method: 'POST',
+        auth: true,
+        credentials: 'include',
+        headers: COOKIE_AUTH_HEADERS,
+      })
     } finally {
       clearSession()
     }
