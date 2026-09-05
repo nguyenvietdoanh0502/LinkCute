@@ -1,34 +1,27 @@
 import {
-  ArrowLeft,
-  ArrowRight,
   CalendarDays,
-  ChevronDown,
-  Compass,
-  LayoutGrid,
-  Map,
-  MapPinned,
-  MapPin,
   MessageCircle,
-  RotateCcw,
-  Search,
-  SlidersHorizontal,
-  Sparkles,
+  Moon,
+  Sun,
   UserRound,
   UsersRound,
   X,
 } from 'lucide-react'
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, getStoredSession, subscribeSession } from './api/client.js'
+import AppFooter from './components/AppFooter.jsx'
 import AuthModal from './components/AuthModal.jsx'
 import CallOverlay from './components/CallOverlay.jsx'
+import CategoryStrip from './components/CategoryStrip.jsx'
 import ChatPanel from './components/ChatPanel.jsx'
+import DiscoverSection from './components/DiscoverSection.jsx'
 import FriendsPanel from './components/FriendsPanel.jsx'
+import Hero from './components/Hero.jsx'
 import ItineraryPanel from './components/ItineraryPanel.jsx'
-import PlaceCard, { categoryLabel } from './components/PlaceCard.jsx'
 import PlaceDetailModal from './components/PlaceDetailModal.jsx'
 import ProfileAvatar from './components/ProfileAvatar.jsx'
-import SelectDropdown from './components/SelectDropdown.jsx'
 import ShareLocationDialog from './components/ShareLocationDialog.jsx'
+import SiteHeader from './components/SiteHeader.jsx'
 import Toast from './components/Toast.jsx'
 import { useDebouncedValue } from './hooks/useDebouncedValue.js'
 import { useChat } from './hooks/useChat.js'
@@ -37,32 +30,10 @@ import { useCurrentLocation } from './hooks/useCurrentLocation.js'
 import { useFriendships } from './hooks/useFriendships.js'
 import { useItineraryPlans } from './hooks/useItineraryPlans.js'
 import { usePlanSharing } from './hooks/usePlanSharing.js'
+import { useTheme } from './hooks/useTheme.js'
 import { locationFromMessage } from './location/model.js'
 
-const CATEGORY_ICONS = {
-  FOOD: '✦',
-  CAFE: '☕',
-  ENTERTAINMENT: '♫',
-  CINEMA: '◉',
-  SHOPPING: '◇',
-  OTHER: '⌖',
-}
-
 const PAGE_SIZE = 12
-const AwsPlacesMap = lazy(() => import('./components/AwsPlacesMap.jsx'))
-
-function SkeletonCard() {
-  return (
-    <div className="place-card skeleton-card" aria-hidden="true">
-      <div className="skeleton skeleton--visual" />
-      <div className="place-card__body">
-        <div className="skeleton skeleton--title" />
-        <div className="skeleton skeleton--line" />
-        <div className="skeleton skeleton--short" />
-      </div>
-    </div>
-  )
-}
 
 function paginationItems(current, total) {
   if (total <= 5) return Array.from({ length: total }, (_, index) => index)
@@ -82,7 +53,7 @@ export default function App() {
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
   const [page, setPage] = useState(0)
   const [placePage, setPlacePage] = useState(null)
-  const [viewMode, setViewMode] = useState('list')
+  const [viewMode, setViewMode] = useState('map')
   const [mapPlaces, setMapPlaces] = useState([])
   const [mapLoading, setMapLoading] = useState(false)
   const [mapPlacesError, setMapPlacesError] = useState('')
@@ -130,6 +101,7 @@ export default function App() {
   const friendshipState = useFriendships(session)
   const chatState = useChat(session)
   const callState = useCall(session)
+  const { theme, toggle: toggleTheme } = useTheme()
   const callPeer = useMemo(() => {
     const peerId = callState.peer?.id || callState.peer?.userId
     if (!peerId) return callState.peer
@@ -542,22 +514,30 @@ export default function App() {
   const hasFilters = Boolean(search || category || district || openNow)
   const total = placePage?.totalElements || 0
   const pageItems = useMemo(() => paginationItems(placePage?.number || 0, placePage?.totalPages || 0), [placePage])
+  const homeTab = viewMode === 'map' ? 'map' : 'list'
 
   return (
     <div className="app-shell">
-      <header className="site-header">
-        <a className="brand" href="#top" aria-label="LinkCute - Trang chủ">
-          <span className="brand__mark">L</span>
-          <span>link<span>cute</span></span>
-        </a>
-
-        <nav className="desktop-nav" aria-label="Điều hướng chính">
-          <a href="#discover">Khám phá</a>
-          <a href="#categories">Danh mục</a>
-          <a href="#about">Về LinkCute</a>
-        </nav>
-
-        <div className="header-actions">
+      <SiteHeader
+        activeTab={homeTab}
+        onNavigate={(tab) => {
+          if (tab === 'map') {
+            setViewMode('map')
+            window.requestAnimationFrame(() => {
+              document.querySelector('#top')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+            })
+            return
+          }
+          if (viewMode !== 'list') setViewMode('list')
+          const target = tab === 'categories' ? '#categories' : tab === 'about' ? '#about' : '#discover'
+          window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => {
+              document.querySelector(target)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+            })
+          })
+        }}
+        actions={
+        <>
           <button
             className="itinerary-launcher"
             type="button"
@@ -615,6 +595,15 @@ export default function App() {
               )}
             </button>
           )}
+          <button
+            className="theme-toggle"
+            type="button"
+            onClick={toggleTheme}
+            aria-label={theme === 'dark' ? 'Chuyển sang giao diện sáng' : 'Chuyển sang giao diện tối'}
+            title={theme === 'dark' ? 'Giao diện tối' : 'Giao diện sáng'}
+          >
+            {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
+          </button>
           <button className="account-button" type="button" onClick={() => setAuthMode(session ? 'account' : 'login')}>
             {session ? (
               <>
@@ -623,209 +612,66 @@ export default function App() {
               </>
             ) : <><UserRound size={17} /><span>Đăng nhập</span></>}
           </button>
+        </>
+      } />
+
+      <main id="top" className={`home-tab home-tab--${homeTab}`}>
+        <div className="discover-content">
+          <Hero
+            search={search}
+            onSearchChange={setSearch}
+            onSelectCategory={setCategory}
+            total={total}
+            districtCount={districts.length}
+          />
+
+          <CategoryStrip
+            categories={categories}
+            category={category}
+            onSelectCategory={setCategory}
+          />
         </div>
-      </header>
 
-      <main id="top">
-        <section className="hero">
-          <div className="hero__grain" />
-          <div className="hero__copy">
-            <span className="eyebrow eyebrow--hero"><Sparkles size={14} /> Hanoi, curated with care</span>
-            <h1>Một Hà Nội<br />rất <em>riêng</em> đang chờ.</h1>
-            <p>Từ một quán cà phê nép trong ngõ nhỏ đến bữa tối đáng nhớ — tìm địa điểm hợp đúng tâm trạng của bạn.</p>
+        <DiscoverSection
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          mobileFiltersOpen={mobileFiltersOpen}
+          onToggleMobileFilters={() => setMobileFiltersOpen((value) => !value)}
+          search={search}
+          onSearchChange={setSearch}
+          category={category}
+          onCategoryChange={setCategory}
+          district={district}
+          onDistrictChange={setDistrict}
+          districts={districts}
+          categories={categories}
+          openNow={openNow}
+          onOpenNowChange={setOpenNow}
+          onClearFilters={clearFilters}
+          placesError={placesError}
+          onRetry={() => setRequestVersion((current) => current + 1)}
+          loading={loading}
+          placePage={placePage}
+          pageItems={pageItems}
+          onPageChange={setPage}
+          onSelectPlace={selectPlace}
+          onAddToPlan={handleAddToPlan}
+          isInPlan={isPlaceInSelectedPlan}
+          mapPlaces={mapPlaces}
+          mapLoading={mapLoading}
+          mapError={mapPlacesError}
+          userLocation={locationState.position}
+          locationStatus={locationState.status}
+          locationError={locationState.error}
+          onLocate={handleLocateSelf}
+          onShareLocation={handleOpenLocationShare}
+          focusedLocation={focusedLocation}
+          onClearFocusedLocation={clearFocusedLocation}
+          theme={theme}
+        />
 
-            <form className="hero-search" onSubmit={(event) => { event.preventDefault(); document.querySelector('#discover')?.scrollIntoView({ behavior: 'smooth' }) }}>
-              <Search size={21} />
-              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Bạn muốn đi đâu, ăn gì?" aria-label="Tìm kiếm địa điểm" />
-              {search && <button className="search-clear" type="button" onClick={() => setSearch('')} aria-label="Xóa tìm kiếm"><X size={17} /></button>}
-              <button className="hero-search__submit" type="submit">Khám phá <ArrowRight size={17} /></button>
-            </form>
-
-            <div className="hero__quick-links">
-              <span>Thử ngay:</span>
-              {['CAFE', 'FOOD', 'ENTERTAINMENT'].map((item) => (
-                <button key={item} type="button" onClick={() => { setCategory(item); document.querySelector('#discover')?.scrollIntoView({ behavior: 'smooth' }) }}>
-                  {categoryLabel(item)}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="hero__visual" aria-hidden="true">
-            <div className="hero-postcard hero-postcard--back">
-              <span>36°</span>
-              <strong>HÀ NỘI</strong>
-            </div>
-            <div className="hero-postcard hero-postcard--front">
-              <div className="hero-sun" />
-              <div className="hero-skyline"><i /><i /><i /><i /><i /></div>
-              <span className="hero-postcard__number">01</span>
-              <p>small streets<br />big stories</p>
-            </div>
-            <div className="hero-stamp"><Compass size={31} /><span>local<br />picks</span></div>
-          </div>
-
-          <div className="hero__stats">
-            <div><strong>{total ? total.toLocaleString('vi-VN') : '65K+'}</strong><span>địa điểm</span></div>
-            <div><strong>{districts.length || '12+'}</strong><span>quận huyện</span></div>
-            <div><strong>∞</strong><span>câu chuyện</span></div>
-          </div>
-        </section>
-
-        <section className="category-strip" id="categories">
-          <div className="category-strip__intro">
-            <span className="eyebrow">Chọn một cảm hứng</span>
-            <h2>Hôm nay mình đi đâu?</h2>
-          </div>
-          <div className="category-pills">
-            <button className={!category ? 'active' : ''} type="button" onClick={() => setCategory('')}><span>⌁</span>Tất cả</button>
-            {categories.map((item) => (
-              <button className={category === item.category ? 'active' : ''} key={item.category} type="button" onClick={() => setCategory(item.category)}>
-                <span>{CATEGORY_ICONS[item.category] || '⌖'}</span>{item.name || categoryLabel(item.category)}
-                {item.count != null && <small>{item.count.toLocaleString('vi-VN')}</small>}
-              </button>
-            ))}
-          </div>
-        </section>
-
-        <section className="discover-section" id="discover">
-          <div className="section-heading">
-            <div>
-              <span className="eyebrow">Khám phá gần đây</span>
-              <h2>{hasFilters ? 'Kết quả dành cho bạn' : 'Những nơi đáng ghé'}</h2>
-              <p>{(viewMode === 'map' ? mapLoading : loading) ? 'Đang tìm những lựa chọn phù hợp…' : `${total.toLocaleString('vi-VN')} địa điểm được tìm thấy`}</p>
-            </div>
-            <div className="discover-actions">
-              <div className="view-switch" role="group" aria-label="Chế độ hiển thị">
-                <button className={viewMode === 'list' ? 'active' : ''} type="button" onClick={() => setViewMode('list')}><LayoutGrid size={16} /> Danh sách</button>
-                <button className={viewMode === 'map' ? 'active' : ''} type="button" onClick={() => setViewMode('map')}><MapPinned size={16} /> Bản đồ</button>
-              </div>
-              <button className="mobile-filter-button" type="button" onClick={() => setMobileFiltersOpen((value) => !value)}>
-                <SlidersHorizontal size={17} /> Bộ lọc <ChevronDown size={15} />
-              </button>
-            </div>
-          </div>
-
-          <div className={`filter-bar ${mobileFiltersOpen ? 'filter-bar--open' : ''}`}>
-            <label className="filter-search">
-              <Search size={18} />
-              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tên hoặc địa chỉ…" aria-label="Tìm theo tên hoặc địa chỉ" />
-            </label>
-            <SelectDropdown
-              className="filter-dropdown"
-              value={district}
-              onChange={setDistrict}
-              icon={<MapPin size={17} />}
-              ariaLabel="Chọn quận huyện"
-              searchable
-              searchPlaceholder="Tìm quận, huyện…"
-              options={[
-                { value: '', label: 'Mọi khu vực' },
-                ...districts.map((item) => ({
-                  value: item.district,
-                  label: item.district,
-                  count: item.count,
-                })),
-              ]}
-            />
-            <label className="toggle-filter">
-              <input type="checkbox" checked={openNow} onChange={(event) => setOpenNow(event.target.checked)} />
-              <span className="toggle-filter__track"><span /></span>
-              Đang mở cửa
-            </label>
-            {hasFilters && <button className="clear-filters" type="button" onClick={clearFilters}><RotateCcw size={15} /> Đặt lại</button>}
-          </div>
-
-          {viewMode === 'list' && placesError && (
-            <div className="empty-state">
-              <span className="empty-state__symbol">!</span>
-              <h3>Chưa kết nối được với LinkCute</h3>
-              <p>{placesError}</p>
-              <button className="button button--secondary" type="button" onClick={() => setRequestVersion((current) => current + 1)}>Thử lại</button>
-            </div>
-          )}
-
-          {viewMode === 'list' && !placesError && (
-            <div className="place-grid">
-              {loading
-                ? Array.from({ length: 8 }, (_, index) => <SkeletonCard key={index} />)
-                : placePage?.content?.map((place) => (
-                  <PlaceCard
-                    key={place.id}
-                    place={place}
-                    onSelect={selectPlace}
-                    onAddToPlan={handleAddToPlan}
-                    isInPlan={isPlaceInSelectedPlan(place.id)}
-                  />
-                ))}
-            </div>
-          )}
-
-          {viewMode === 'map' && (
-            <Suspense fallback={<div className="map-setup-state"><span className="loader" /><p>Đang chuẩn bị trình hiển thị bản đồ…</p></div>}>
-              <AwsPlacesMap
-                places={mapPlaces}
-                loading={mapLoading}
-                error={mapPlacesError}
-                onSelect={selectPlace}
-                userLocation={locationState.position}
-                locationStatus={locationState.status}
-                locationError={locationState.error}
-                onLocate={handleLocateSelf}
-                onShareLocation={handleOpenLocationShare}
-                focusedLocation={focusedLocation}
-                onClearFocusedLocation={clearFocusedLocation}
-                filters={{
-                  search,
-                  category,
-                  district,
-                  openNow,
-                  categories,
-                  districts,
-                  onSearchChange: setSearch,
-                  onCategoryChange: setCategory,
-                  onDistrictChange: setDistrict,
-                  onOpenNowChange: setOpenNow,
-                }}
-              />
-            </Suspense>
-          )}
-
-          {viewMode === 'list' && !loading && !placesError && placePage?.content?.length === 0 && (
-            <div className="empty-state">
-              <span className="empty-state__symbol"><Map size={29} /></span>
-              <h3>Chưa tìm thấy nơi phù hợp</h3>
-              <p>Thử đổi từ khóa, khu vực hoặc bỏ bớt bộ lọc nhé.</p>
-              <button className="button button--secondary" type="button" onClick={clearFilters}>Xóa bộ lọc</button>
-            </div>
-          )}
-
-          {viewMode === 'list' && !loading && placePage?.totalPages > 1 && (
-            <nav className="pagination" aria-label="Phân trang">
-              <button type="button" disabled={placePage.first} onClick={() => setPage((current) => current - 1)} aria-label="Trang trước"><ArrowLeft size={17} /></button>
-              {pageItems.map((item, index) => (
-                <span key={item} className="pagination__item-wrap">
-                  {index > 0 && item - pageItems[index - 1] > 1 && <i>…</i>}
-                  <button className={placePage.number === item ? 'active' : ''} type="button" onClick={() => setPage(item)} aria-current={placePage.number === item ? 'page' : undefined}>{item + 1}</button>
-                </span>
-              ))}
-              <button type="button" disabled={placePage.last} onClick={() => setPage((current) => current + 1)} aria-label="Trang sau"><ArrowRight size={17} /></button>
-            </nav>
-          )}
-        </section>
-
-        <section className="about-band" id="about">
-          <div className="about-band__mark">LC</div>
-          <div><span className="eyebrow eyebrow--light">Made for curious souls</span><h2>Không chỉ tìm một nơi.<br />Hãy tìm một <em>cảm giác.</em></h2></div>
-          <p>LinkCute kết nối dữ liệu địa điểm từ backend với một trải nghiệm khám phá nhẹ nhàng, nhanh chóng và gần gũi.</p>
-        </section>
+        <AppFooter />
       </main>
-
-      <footer className="site-footer">
-        <a className="brand brand--footer" href="#top"><span className="brand__mark">L</span><span>link<span>cute</span></span></a>
-        <p>Demo ReactJS sử dụng LinkCute Backend API.</p>
-        <a href="https://linkcute.duckdns.org" target="_blank" rel="noreferrer">API production <span className="online-dot" /> Online</a>
-      </footer>
 
       <ItineraryPanel
         open={itineraryOpen}

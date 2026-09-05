@@ -28,14 +28,18 @@ const CLUSTER_LAYER_ID = 'linkcute-place-clusters'
 const CLUSTER_COUNT_LAYER_ID = 'linkcute-place-cluster-count'
 const PLACE_LAYER_ID = 'linkcute-place-markers'
 
+// Brand-driven palette: coral CTA hue for food, warm tan cafes, teal-adjacent
+// entertainment, steel-blue cinema, dusty rose shopping, muted violet other.
 const CATEGORY_COLORS = {
-  FOOD: '#ef604b',
-  CAFE: '#a96743',
-  ENTERTAINMENT: '#31786f',
-  CINEMA: '#315765',
-  SHOPPING: '#c55f79',
-  OTHER: '#776b9e',
+  FOOD: '#ef6b55',
+  CAFE: '#c98a4b',
+  ENTERTAINMENT: '#2e7d72',
+  CINEMA: '#3d5a80',
+  SHOPPING: '#b45c7e',
+  OTHER: '#7a6f9e',
 }
+
+const CLUSTER_COLOR_RAMP = ['#2e7d72', 10, '#ef6b55', 35, '#c33f2b']
 
 const MARKER_IMAGE_IDS = Object.fromEntries(
   Object.keys(CATEGORY_COLORS).map((category) => [category, `linkcute-marker-${category.toLowerCase()}`]),
@@ -205,7 +209,7 @@ function drawCategoryIcon(context, category) {
   context.restore()
 }
 
-function createMarkerImage(category, color) {
+function createMarkerImage(category, color, strokeColor = '#ffffff') {
   const canvas = document.createElement('canvas')
   canvas.width = 64
   canvas.height = 80
@@ -226,7 +230,7 @@ function createMarkerImage(category, color) {
   context.fill()
   context.shadowColor = 'transparent'
   context.lineWidth = 4
-  context.strokeStyle = '#ffffff'
+  context.strokeStyle = strokeColor
   context.stroke()
   context.restore()
 
@@ -268,11 +272,11 @@ function hideAwsPoiLayers(map) {
   })
 }
 
-function addPlaceLayers(map) {
+function addPlaceLayers(map, strokeColor = '#ffffff') {
   Object.entries(CATEGORY_COLORS).forEach(([category, color]) => {
     const imageId = MARKER_IMAGE_IDS[category]
     if (!map.hasImage(imageId)) {
-      map.addImage(imageId, createMarkerImage(category, color), { pixelRatio: 2 })
+      map.addImage(imageId, createMarkerImage(category, color, strokeColor), { pixelRatio: 2 })
     }
   })
 
@@ -293,11 +297,7 @@ function addPlaceLayers(map) {
       'circle-color': [
         'step',
         ['get', 'point_count'],
-        '#31786f',
-        10,
-        '#d87753',
-        35,
-        '#b85168',
+        ...CLUSTER_COLOR_RAMP,
       ],
       'circle-radius': [
         'step',
@@ -309,7 +309,7 @@ function addPlaceLayers(map) {
         29,
       ],
       'circle-stroke-width': 3,
-      'circle-stroke-color': '#ffffff',
+      'circle-stroke-color': strokeColor,
       'circle-opacity': 0.94,
       'circle-stroke-opacity': 0.95,
     },
@@ -445,6 +445,7 @@ export default function AwsPlacesMap({
   onShareLocation,
   focusedLocation = null,
   onClearFocusedLocation,
+  theme = 'light',
 }) {
   const panelRef = useRef(null)
   const containerRef = useRef(null)
@@ -455,13 +456,15 @@ export default function AwsPlacesMap({
   const locationCameraModeRef = useRef('places')
   const lastFilterSignatureRef = useRef('')
   const placesByIdRef = useRef(new Map())
+  const themeAppliedRef = useRef(false)
   const [mapReady, setMapReady] = useState(false)
   const [mapError, setMapError] = useState('')
 
   const apiKey = import.meta.env.VITE_AWS_LOCATION_API_KEY?.trim()
   const region = import.meta.env.VITE_AWS_LOCATION_REGION?.trim() || DEFAULT_REGION
   const mapStyle = import.meta.env.VITE_AWS_MAP_STYLE?.trim() || DEFAULT_STYLE
-  const colorScheme = import.meta.env.VITE_AWS_MAP_COLOR_SCHEME?.trim() || 'Light'
+  // 'Light'/'Dark' match the AWS style descriptor's color-scheme values.
+  const colorScheme = theme === 'dark' ? 'Dark' : 'Light'
 
   const validPlaces = useMemo(() => places.filter(isValidCoordinate), [places])
   const validUserLocation = useMemo(() => normalizeLocation(userLocation), [userLocation])
@@ -500,24 +503,17 @@ export default function AwsPlacesMap({
       minZoom: 5,
       maxZoom: 19,
       attributionControl: false,
-      locale: {
-        'FullscreenControl.Enter': 'Mở bản đồ toàn màn hình',
-        'FullscreenControl.Exit': 'Thoát toàn màn hình',
-      },
     })
 
     mapRef.current = map
-    map.addControl(new maplibregl.FullscreenControl({
-      container: panelRef.current,
-      pseudo: true,
-    }), 'top-right')
+    themeAppliedRef.current = false
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'top-right')
     map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right')
 
     const onLoad = () => {
       try {
         hideAwsPoiLayers(map)
-        addPlaceLayers(map)
+        addPlaceLayers(map, getComputedStyle(map.getCanvas()).getPropertyValue('--map-marker-stroke').trim() || '#ffffff')
         setMapReady(true)
         setMapError('')
         map.resize()
@@ -589,6 +585,7 @@ export default function AwsPlacesMap({
       focusedMarkerRef.current?.remove()
       focusedMarkerRef.current = null
       locationCameraModeRef.current = 'places'
+      themeAppliedRef.current = false
       map.off('load', onLoad)
       map.off('error', onError)
       map.off('click', CLUSTER_LAYER_ID, onClusterClick)
@@ -601,6 +598,59 @@ export default function AwsPlacesMap({
       mapRef.current = null
     }
   }, [apiKey, colorScheme, mapStyle, onSelect, region])
+
+  // Theme sync: on the first run the init effect just created the map with
+  // this exact color-scheme, so only the canvas strokes need aligning with
+  // the theme. On later theme changes, swap the AWS style descriptor's
+  // color-scheme and rebuild the source/layers (setStyle resets the style).
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+
+    const applyScheme = () => {
+      if (mapRef.current !== map) return
+      if (!map.isStyleLoaded()) return // init onLoad seeds layers with the current stroke
+      try {
+        hideAwsPoiLayers(map)
+        const strokeColor = getComputedStyle(map.getCanvas())
+          .getPropertyValue('--map-marker-stroke').trim() || '#ffffff'
+        Object.values(MARKER_IMAGE_IDS).forEach((imageId) => {
+          if (map.hasImage(imageId)) map.removeImage(imageId)
+        })
+        Object.entries(CATEGORY_COLORS).forEach(([category, color]) => {
+          map.addImage(MARKER_IMAGE_IDS[category], createMarkerImage(category, color, strokeColor), { pixelRatio: 2 })
+        })
+        if (map.getSource(SOURCE_ID)) {
+          // Style was re-seeded by the init handler — just restyle the stroke.
+          map.setPaintProperty(CLUSTER_LAYER_ID, 'circle-stroke-color', strokeColor)
+        } else {
+          // setStyle reset the style — rebuild source, layers, and data.
+          addPlaceLayers(map, strokeColor)
+        }
+        map.getSource(SOURCE_ID)?.setData(toFeatureCollection(Array.from(placesByIdRef.current.values())))
+      } catch {
+        // Style reload failed — the map keeps its previous theme until next load.
+      }
+    }
+
+    if (!themeAppliedRef.current) {
+      // Fresh map (or StrictMode remount) — strokes only, no style reload.
+      themeAppliedRef.current = true
+      applyScheme()
+      return undefined
+    }
+
+    const styleUrl = new URL(`https://maps.geo.${region}.amazonaws.com/v2/styles/${encodeURIComponent(mapStyle)}/descriptor`)
+    styleUrl.searchParams.set('key', apiKey)
+    styleUrl.searchParams.set('color-scheme', theme === 'dark' ? 'Dark' : 'Light')
+
+    map.on('load', applyScheme)
+    map.setStyle(styleUrl.toString())
+
+    return () => {
+      map.off('load', applyScheme)
+    }
+  }, [apiKey, mapStyle, region, theme])
 
   useEffect(() => {
     const map = mapRef.current
@@ -702,6 +752,7 @@ export default function AwsPlacesMap({
   return (
     <div ref={panelRef} className="aws-map-panel">
       <div ref={containerRef} className="aws-map-canvas" aria-label="Bản đồ Amazon Location chứa các địa điểm tìm được" />
+      <FullscreenMapFilters filters={filters} />
 
       <div className="map-result-badge">
         <span><MapPinned size={17} /></span>
@@ -746,8 +797,6 @@ export default function AwsPlacesMap({
           </button>
         </div>
       )}
-
-      <FullscreenMapFilters filters={filters} />
 
       {(loading || (!mapReady && !mapError)) && (
         <div className="map-loading"><span className="loader" /><p>Đang tải bản đồ AWS và các điểm đến…</p></div>
