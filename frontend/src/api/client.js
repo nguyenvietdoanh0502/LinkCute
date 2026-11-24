@@ -307,6 +307,42 @@ export const api = {
       auth: true,
     }).then((response) => response.data)
   },
+  getChatGroups(options = {}) {
+    return request('/chat/groups', { ...options, auth: true }).then((response) => response.data)
+  },
+  createChatGroup(name, options = {}) {
+    return request('/chat/groups', { ...options, method: 'POST', body: { name }, auth: true }).then((response) => response.data)
+  },
+  getChatGroup(id, options = {}) {
+    return request(`/chat/groups/${encodeURIComponent(id)}`, { ...options, auth: true }).then((response) => response.data)
+  },
+  renameChatGroup(id, name, options = {}) {
+    return request(`/chat/groups/${encodeURIComponent(id)}`, { ...options, method: 'PATCH', body: { name }, auth: true }).then((response) => response.data)
+  },
+  uploadChatGroupAvatar(id, file, options = {}) {
+    const body = new FormData()
+    body.append('file', file)
+    return request(`/chat/groups/${encodeURIComponent(id)}/avatar`, { ...options, method: 'POST', body, auth: true }).then((response) => response.data)
+  },
+  inviteChatGroupFriend(id, userId, options = {}) {
+    return request(`/chat/groups/${encodeURIComponent(id)}/invitations`, { ...options, method: 'POST', body: { userId }, auth: true }).then((response) => response.data)
+  },
+  acceptChatGroupInvitation(id, options = {}) {
+    return request(`/chat/groups/${encodeURIComponent(id)}/invitation/accept`, { ...options, method: 'POST', auth: true }).then((response) => response.data)
+  },
+  declineChatGroupInvitation(id, options = {}) {
+    return request(`/chat/groups/${encodeURIComponent(id)}/invitation`, { ...options, method: 'DELETE', auth: true }).then((response) => response.data)
+  },
+  leaveChatGroup(id, options = {}) {
+    return request(`/chat/groups/${encodeURIComponent(id)}/membership`, { ...options, method: 'DELETE', auth: true }).then((response) => response.data)
+  },
+  getChatGroupMessages(id, params = {}, options = {}) {
+    const query = queryString({ before: params.before, after: params.after })
+    return request(`/chat/groups/${encodeURIComponent(id)}/messages${query ? `?${query}` : ''}`, { ...options, auth: true }).then((response) => response.data)
+  },
+  sendChatGroupMessage(id, body, options = {}) {
+    return request(`/chat/groups/${encodeURIComponent(id)}/messages`, { ...options, method: 'POST', body, auth: true }).then((response) => response.data)
+  },
   getPlans(options = {}) {
     return request('/plans', { ...options, auth: true }).then((response) => response.data)
   },

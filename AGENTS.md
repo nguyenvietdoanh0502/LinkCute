@@ -164,6 +164,7 @@ Trên shell Unix dùng `./mvnw` thay `.\mvnw.cmd`. Backend test mặc định d�
 - `backend/AGENTS.MD` hiện là file rỗng, tên có đuôi viết hoa. File gốc này là hướng dẫn chung; nếu bổ sung hướng dẫn backend sau này, giữ liên kết về đây và chú ý tên `AGENTS.md` chuẩn trên hệ thống phân biệt hoa/thường.
 - `LocalPlaceDataController` chỉ có ở profile `local` và hiện mang `@PreAuthorize("denyAll()")`; không giả định endpoint import gọi được hoặc tự gỡ chặn để chạy thử.
 - Snapshot này có các thay đổi UI/theme trong working tree chưa commit. Bản đồ phản ánh file đang có trên đĩa; mỗi phiên phải xem Git lại, không xem trạng thái ghi ở đây là trạng thái Git hiện tại.
+- Kiểm thử hồi quy ngày 2026-09-05: frontend 88/88, backend 258/258 và build frontend đạt. Kiểm tra bổ sung theme phát hiện lỗi toggle từ `system` khi hệ thống tối và lỗi khởi tạo khi getter `localStorage` bị chặn; chưa sửa. Xem `TEST_REPORT.md` để biết cách tái hiện và các phần chưa xác minh trên trình duyệt/dịch vụ thực.
 
 ## 9. Nhật ký thay đổi của agent
 
@@ -179,6 +180,14 @@ Mẫu bắt buộc:
 - Kiểm tra: lệnh/kiểm tra đã thực hiện và kết quả; phần chưa chạy kèm lý do.
 - Còn lại: không có, hoặc vấn đề chưa giải quyết và điểm tiếp tục.
 ```
+
+### 2026-09-05 — Kiểm thử lại chức năng hiện có
+
+- Thay đổi: thêm `TEST_REPORT.md` ghi kết quả kiểm thử, phạm vi bao phủ, hai lỗi theme tái hiện được và script tái hiện; không sửa code ứng dụng.
+- Phạm vi: `TEST_REPORT.md`, `AGENTS.md`; test/build sinh lại output thông thường trong `frontend/dist/` và `backend/target/`.
+- Tài liệu: bổ sung kết quả đã xác minh và lỗi còn mở ở mục 8; không đổi cấu trúc hoặc hợp đồng chức năng. Ngày đầu file giữ 2026-09-05 vì cùng ngày cập nhật.
+- Kiểm tra: `npm.cmd test` đạt 88/88; `npm.cmd run build` đạt với cảnh báo chunk bản đồ lớn; `.\mvnw.cmd test` đạt 258/258 sau khi chạy ngoài sandbox để xử lý giới hạn Maven Central, JVM test là Java 21.0.10. Kiểm tra theme qua stdin/React StrictMode đạt 5/7, hai tình huống lỗi được ghi rõ trong báo cáo. Đã đối chiếu thống kê Surefire, đường dẫn, script tái hiện và whitespace của tài liệu.
+- Còn lại: hai lỗi trong `frontend/src/hooks/useTheme.js` chưa sửa; chưa kiểm tra trình duyệt desktop/mobile (không có Browser kết nối), dịch vụ thật, luồng hai tài khoản/thiết bị và PostgreSQL/JDK 17. Không thực hiện ghi dữ liệu lên backend đang deploy.
 
 ### 2026-09-05 — Tạo hướng dẫn agent cho toàn dự án
 

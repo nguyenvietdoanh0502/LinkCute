@@ -77,6 +77,11 @@ public enum ErrorCode {
     // ==========================================
     // DIRECT CHAT ERRORS
     // ==========================================
+    GROUP_NOT_FOUND("GROUP_NOT_FOUND", "Group not found or no longer accessible", 404),
+    GROUP_INVITATION_NOT_FOUND("GROUP_INVITATION_NOT_FOUND", "Group invitation not found", 404),
+    GROUP_REQUIRES_FRIENDSHIP("GROUP_REQUIRES_FRIENDSHIP", "Only accepted friends can be invited", 403),
+    GROUP_ALREADY_PARTICIPANT("GROUP_ALREADY_PARTICIPANT", "User is already invited or a member", 409),
+    INVALID_GROUP_NAME("INVALID_GROUP_NAME", "Group name must contain between 1 and 100 characters", 400),
     CHAT_REQUIRES_FRIENDSHIP("CHAT_REQUIRES_FRIENDSHIP", "Only accepted friends can exchange messages", 403),
     CHAT_RECIPIENT_NOT_FOUND("CHAT_RECIPIENT_NOT_FOUND", "Chat recipient not found", 404),
     CHAT_SELF_NOT_ALLOWED("CHAT_SELF_NOT_ALLOWED", "You cannot send a direct message to yourself", 400),

@@ -30,7 +30,7 @@ function createClientMessageId() {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
 }
 
-export function useChat(session) {
+export function useChat(session, { onGroupUpdate } = {}) {
   const currentUserId = session?.user?.id || null
   const identity = currentUserId || session?.user?.email || ''
   const [messagesByFriend, setMessagesByFriend] = useState({})
@@ -45,6 +45,8 @@ export function useChat(session) {
   const historyRef = useRef(historyByFriend)
   const historyRequestsRef = useRef(new Map())
   const acknowledgementTimersRef = useRef(new Map())
+  const groupUpdateRef = useRef(onGroupUpdate)
+  groupUpdateRef.current = onGroupUpdate
 
   useEffect(() => { messagesRef.current = messagesByFriend }, [messagesByFriend])
   useEffect(() => { historyRef.current = historyByFriend }, [historyByFriend])
@@ -150,6 +152,9 @@ export function useChat(session) {
 
     setSocketError('')
     const socket = createChatSocket({
+      onGroupUpdate: () => {
+        if (isCurrentGeneration()) groupUpdateRef.current?.()
+      },
       onMessage: (message) => {
         if (isCurrentGeneration()) handleMessage(message)
       },
@@ -158,6 +163,7 @@ export function useChat(session) {
       },
       onStatus: (status) => {
         if (isCurrentGeneration()) setConnectionStatus(status)
+        if (isCurrentGeneration() && status === 'connected') groupUpdateRef.current?.()
       },
     })
     socketRef.current = socket

@@ -41,6 +41,7 @@ public class JwtStompChannelInterceptor implements ChannelInterceptor {
     private static final Set<String> ALLOWED_SUBSCRIBE_DESTINATIONS = Set.of(
             "/user/queue/messages",
             "/user/queue/chat-errors",
+            "/user/queue/group-updates",
             "/user/queue/call-signals",
             "/user/queue/call-errors"
     );

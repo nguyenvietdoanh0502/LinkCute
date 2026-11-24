@@ -25,6 +25,7 @@ import SiteHeader from './components/SiteHeader.jsx'
 import Toast from './components/Toast.jsx'
 import { useDebouncedValue } from './hooks/useDebouncedValue.js'
 import { useChat } from './hooks/useChat.js'
+import { useGroupChat } from './hooks/useGroupChat.js'
 import { useCall } from './hooks/useCall.js'
 import { useCurrentLocation } from './hooks/useCurrentLocation.js'
 import { useFriendships } from './hooks/useFriendships.js'
@@ -99,7 +100,8 @@ export default function App() {
     clearPlanServerLink,
   } = useItineraryPlans(session)
   const friendshipState = useFriendships(session)
-  const chatState = useChat(session)
+  const groupChatState = useGroupChat(session)
+  const chatState = useChat(session, { onGroupUpdate: groupChatState.refresh })
   const callState = useCall(session)
   const { theme, toggle: toggleTheme } = useTheme()
   const callPeer = useMemo(() => {
@@ -713,6 +715,7 @@ export default function App() {
         initialFriendId={chatInitialFriendId}
         currentUserId={session?.user?.id}
         chatState={chatState}
+        groupState={groupChatState}
         callStatus={callState.status}
         callConnectionStatus={callState.connectionStatus}
         showToast={showToast}

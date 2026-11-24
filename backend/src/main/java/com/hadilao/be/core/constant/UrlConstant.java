@@ -45,6 +45,17 @@ public class UrlConstant {
         public static final String FRIENDSHIP_BY_ID = "/friends/{friendshipId}";
     }
 
+    public static class GroupChat {
+        public static final String BASE = "/chat/groups";
+        public static final String BY_ID = BASE + "/{groupId}";
+        public static final String AVATAR = BY_ID + "/avatar";
+        public static final String INVITATIONS = BY_ID + "/invitations";
+        public static final String ACCEPT = BY_ID + "/invitation/accept";
+        public static final String INVITATION = BY_ID + "/invitation";
+        public static final String MEMBERSHIP = BY_ID + "/membership";
+        public static final String MESSAGES = BY_ID + "/messages";
+    }
+
     public static class Chat {
         public static final String FRIEND_MESSAGES = "/chat/friends/{friendId}/messages";
     }

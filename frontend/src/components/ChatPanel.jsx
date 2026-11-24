@@ -18,10 +18,13 @@ import {
   locationFromMessage,
 } from '../location/model.js'
 import ProfileAvatar from './ProfileAvatar.jsx'
+import GroupChatView from './GroupChatView.jsx'
 
 const FOCUSABLE_SELECTOR = [
   'button:not([disabled])',
   'textarea:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
   '[tabindex]:not([tabindex="-1"])',
 ].join(',')
 
@@ -94,6 +97,7 @@ export default function ChatPanel({
   initialFriendId,
   currentUserId,
   chatState,
+  groupState,
   callStatus = 'idle',
   callConnectionStatus = 'disconnected',
   showToast,
@@ -107,6 +111,7 @@ export default function ChatPanel({
   const preserveScrollRef = useRef(null)
   const [selectedFriendId, setSelectedFriendId] = useState(() => initialFriendId || null)
   const [draft, setDraft] = useState('')
+  const [tab, setTab] = useState('friends')
   const friendIds = useMemo(() => (friends || []).map((friend) => friend.user?.id).filter(Boolean), [friends])
   const selectedFriend = (friends || []).find((friend) => friend.user?.id === selectedFriendId) || null
   const messages = selectedFriendId ? (chatState.messagesByFriend[selectedFriendId] || []) : []
@@ -114,6 +119,10 @@ export default function ChatPanel({
     ? (chatState.historyByFriend[selectedFriendId] || { loading: false, error: '', hasMore: false })
     : { loading: false, error: '', hasMore: false }
   const [connectionLabel, connectionClass] = connectionCopy(chatState.connectionStatus)
+
+  useEffect(() => {
+    if (open && initialFriendId) setTab('friends')
+  }, [open, initialFriendId])
 
   useEffect(() => {
     if (!open) return
@@ -129,14 +138,14 @@ export default function ChatPanel({
   }, [open, selectedFriendId])
 
   useEffect(() => {
-    if (!open || !selectedFriendId) {
+    if (!open || !selectedFriendId || tab !== 'friends') {
       chatState.setActiveConversation(null)
       return undefined
     }
     chatState.setActiveConversation(selectedFriendId)
     chatState.loadHistory(selectedFriendId).catch(() => {})
     return () => chatState.setActiveConversation(null)
-  }, [chatState.loadHistory, chatState.setActiveConversation, open, selectedFriendId])
+  }, [chatState.loadHistory, chatState.setActiveConversation, open, selectedFriendId, tab])
 
   useEffect(() => {
     if (!open) return undefined
@@ -144,7 +153,7 @@ export default function ChatPanel({
     const previouslyFocused = document.activeElement
     document.body.style.overflow = 'hidden'
     const focusFrame = window.requestAnimationFrame(() => {
-      if (selectedFriendId) composerRef.current?.focus()
+      if (selectedFriendId && tab === 'friends') composerRef.current?.focus()
       else panelRef.current?.focus()
     })
 
@@ -177,7 +186,7 @@ export default function ChatPanel({
         previouslyFocused.focus()
       }
     }
-  }, [onClose, open, selectedFriendId])
+  }, [onClose, open, selectedFriendId, tab])
 
   useEffect(() => {
     if (!open || !selectedFriendId) {
@@ -251,6 +260,11 @@ export default function ChatPanel({
           <button type="button" onClick={onClose} aria-label="Đóng tin nhắn"><X size={21} /></button>
         </header>
 
+        {groupState && <nav className="chat-tabs" aria-label="Loại trò chuyện">
+          <button type="button" aria-pressed={tab === 'friends'} onClick={() => setTab('friends')}>Bạn bè</button>
+          <button type="button" aria-pressed={tab === 'groups'} onClick={() => setTab('groups')}>Nhóm {groupState.groups.some((g) => g.status === 'INVITED') && <span>({groupState.groups.filter((g) => g.status === 'INVITED').length} lời mời)</span>}</button>
+        </nav>}
+        {tab === 'groups' && groupState ? <GroupChatView key={currentUserId} state={groupState} friends={friends} currentUserId={currentUserId} showToast={showToast} /> : (
         <div className="chat-layout">
           <aside className="chat-friend-list" aria-label="Bạn bè có thể nhắn tin">
             {(friends || []).map((friend) => {
@@ -388,6 +402,7 @@ export default function ChatPanel({
             )}
           </main>
         </div>
+        )}
       </section>
     </div>
   )

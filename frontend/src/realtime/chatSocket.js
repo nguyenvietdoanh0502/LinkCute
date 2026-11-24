@@ -23,6 +23,7 @@ export function createChatSocket({
   onMessage,
   onError,
   onStatus,
+  onGroupUpdate,
   ClientClass = Client,
   brokerURL = chatWebSocketUrl(),
 }) {
@@ -45,6 +46,7 @@ export function createChatSocket({
       reportStatus('connected')
       client.subscribe('/user/queue/messages', (frame) => onMessage?.(parseFrame(frame)))
       client.subscribe('/user/queue/chat-errors', (frame) => reportError(parseFrame(frame)))
+      if (onGroupUpdate) client.subscribe('/user/queue/group-updates', (frame) => onGroupUpdate(parseFrame(frame)))
     },
     onStompError: (frame) => {
       reportError(parseFrame(frame))
